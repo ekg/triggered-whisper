@@ -343,15 +343,15 @@ class WhisperKeyboard {
     }
 
     fun displayKeyEvent(keyCode: Int, keyName: String) {
-        // Add to history (keep last 5 entries after header)
+        // Add to history (keep last 2 entries for compact display)
         val shortName = keyName.removePrefix("KEYCODE_")
         debugKeyHistory.add(0, "$keyCode: $shortName")
-        if (debugKeyHistory.size > 5) {
+        if (debugKeyHistory.size > 2) {
             debugKeyHistory.removeAt(debugKeyHistory.size - 1)
         }
 
-        // Update display with header
-        val displayText = "KEY DEBUG:\n" + debugKeyHistory.joinToString("\n")
-        debugKeyDisplay?.text = displayText
+        // Update display - very compact format
+        val displayText = debugKeyHistory.joinToString("\n")
+        debugKeyDisplay?.text = displayText.ifEmpty { "Keys..." }
     }
 }
