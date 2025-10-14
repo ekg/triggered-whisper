@@ -77,6 +77,8 @@ class WhisperKeyboard {
     private var buttonSettings: ImageButton? = null
     private var micRippleContainer: ConstraintLayout? = null
     private var micRipples: Array<ImageView> = emptyArray()
+    private var debugKeyDisplay: TextView? = null
+    private val debugKeyHistory = mutableListOf<String>()
 
     fun setup(
         layoutInflater: LayoutInflater,
@@ -111,6 +113,7 @@ class WhisperKeyboard {
             keyboardView!!.findViewById(R.id.mic_ripple_2) as ImageView,
             keyboardView!!.findViewById(R.id.mic_ripple_3) as ImageView
         )
+        debugKeyDisplay = keyboardView!!.findViewById(R.id.debug_key_display) as TextView
 
         // Hide buttonPreviousIme if necessary
         if (!shouldOfferImeSwitch) {
@@ -197,6 +200,24 @@ class WhisperKeyboard {
         if (keyboardStatus == KeyboardStatus.Recording) {
             setKeyboardStatus(KeyboardStatus.Transcribing)
             onStartTranscribing(attachToEnd)
+        }
+    }
+
+    fun toggleRecording() {
+        // Mimics the mic button behavior: toggle between Idle and Recording states
+        when (keyboardStatus) {
+            KeyboardStatus.Idle -> {
+                setKeyboardStatus(KeyboardStatus.Recording)
+                onStartRecording()
+            }
+            KeyboardStatus.Recording -> {
+                setKeyboardStatus(KeyboardStatus.Transcribing)
+                onStartTranscribing("")
+            }
+            KeyboardStatus.Transcribing -> {
+                // Do nothing to avoid double-clicking issues
+                return
+            }
         }
     }
 
@@ -319,5 +340,18 @@ class WhisperKeyboard {
         }
 
         keyboardStatus = newStatus
+    }
+
+    fun displayKeyEvent(keyCode: Int, keyName: String) {
+        // Add to history (keep last 5 entries after header)
+        val shortName = keyName.removePrefix("KEYCODE_")
+        debugKeyHistory.add(0, "$keyCode: $shortName")
+        if (debugKeyHistory.size > 5) {
+            debugKeyHistory.removeAt(debugKeyHistory.size - 1)
+        }
+
+        // Update display with header
+        val displayText = "KEY DEBUG:\n" + debugKeyHistory.joinToString("\n")
+        debugKeyDisplay?.text = displayText
     }
 }

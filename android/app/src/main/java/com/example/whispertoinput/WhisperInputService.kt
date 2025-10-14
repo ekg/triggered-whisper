@@ -21,6 +21,7 @@ package com.example.whispertoinput
 
 import android.inputmethodservice.InputMethodService
 import android.os.Build
+import android.util.Log
 import android.view.View
 import android.content.Intent
 import android.os.IBinder
@@ -258,5 +259,25 @@ class WhisperInputService : InputMethodService() {
         whisperTranscriber.stop()
         whisperKeyboard.reset()
         recorderManager!!.stop()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // Get a human-readable name for the key
+        val keyName = KeyEvent.keyCodeToString(keyCode)
+
+        Log.d("whisper-input", "onKeyDown: keyCode=$keyCode ($keyName)")
+
+        // Display ALL key events in debug panel
+        whisperKeyboard.displayKeyEvent(keyCode, keyName)
+
+        // Map shoulder buttons (L1 or R1) to toggle recording (same as mic button)
+        when (keyCode) {
+            KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1 -> {
+                Log.d("whisper-input", "Shoulder button pressed, toggling recording")
+                whisperKeyboard.toggleRecording()
+                return true  // Consume the event
+            }
+        }
+        return super.onKeyDown(keyCode, event)
     }
 }
