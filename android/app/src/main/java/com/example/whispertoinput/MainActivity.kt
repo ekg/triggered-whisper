@@ -88,8 +88,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Update display
-        val displayText = "🎮 JOYSTICK TEST:\n" + joystickKeyHistory.joinToString("\n")
-        findViewById<TextView>(R.id.joystick_test_display)?.text = displayText
+        val displayText = joystickKeyHistory.joinToString("\n")
+        findViewById<TextView>(R.id.joystick_test_display)?.text = displayText.ifEmpty { "Press any button..." }
 
         return super.onKeyDown(keyCode, event)
     }
