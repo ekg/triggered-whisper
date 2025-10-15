@@ -221,6 +221,16 @@ class WhisperKeyboard {
         }
     }
 
+    fun triggerEnter() {
+        // Mimics the enter button behavior
+        if (keyboardStatus == KeyboardStatus.Recording) {
+            setKeyboardStatus(KeyboardStatus.Transcribing)
+            onStartTranscribing("\r\n")
+        } else {
+            onEnter()
+        }
+    }
+
     private fun onButtonSpaceBarClick() {
         // Upon button space bar click.
         // Recording -> Start transcribing (with a whitespace included)

@@ -270,11 +270,18 @@ class WhisperInputService : InputMethodService() {
         // Display ALL key events in debug panel
         whisperKeyboard.displayKeyEvent(keyCode, keyName)
 
-        // Map shoulder buttons (L1 or R1) to toggle recording (same as mic button)
+        // Map controller buttons
         when (keyCode) {
             KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1 -> {
+                // L1 or R1: Toggle recording (same as mic button)
                 Log.d("whisper-input", "Shoulder button pressed, toggling recording")
                 whisperKeyboard.toggleRecording()
+                return true  // Consume the event
+            }
+            KeyEvent.KEYCODE_BUTTON_B -> {
+                // Button B: Trigger enter (stop recording with newline, or send enter)
+                Log.d("whisper-input", "Button B pressed, triggering enter")
+                whisperKeyboard.triggerEnter()
                 return true  // Consume the event
             }
         }
