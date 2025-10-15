@@ -287,12 +287,14 @@ class WhisperInputService : InputMethodService() {
             KeyEvent.KEYCODE_BUTTON_L2 -> {
                 // L2: Send Ctrl+Q P (tmux previous window)
                 Log.d("whisper-input", "L2 pressed, sending Ctrl+Q P")
+                whisperKeyboard.displayKeyEvent(keyCode, "◀️ TMUX PREV")
                 sendTmuxSequence(KeyEvent.KEYCODE_P)
                 return true
             }
             KeyEvent.KEYCODE_BUTTON_R2 -> {
                 // R2: Send Ctrl+Q N (tmux next window)
                 Log.d("whisper-input", "R2 pressed, sending Ctrl+Q N")
+                whisperKeyboard.displayKeyEvent(keyCode, "▶️ TMUX NEXT")
                 sendTmuxSequence(KeyEvent.KEYCODE_N)
                 return true
             }
