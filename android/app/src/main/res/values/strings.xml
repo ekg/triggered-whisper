@@ -77,6 +77,12 @@
         <item>@string/settings_option_yes</item>
         <item>@string/settings_option_no</item>
     </string-array>
+    <string name="settings_floating_keyboard_landscape">Floating Keyboard in Landscape</string>
+    <string name="settings_floating_keyboard_landscape_desc">Show keyboard as a draggable floating window in landscape mode. Requires \"Display over other apps\" permission - enable in Android Settings > Apps > Triggered Whisper > Display over other apps.</string>
+    <string-array name="settings_floating_keyboard_landscape_array">
+        <item>@string/settings_option_yes</item>
+        <item>@string/settings_option_no</item>
+    </string-array>
     <string name="settings_postprocessing">Postprocessing</string>
     <string name="settings_postprocessing_desc">Choose how to handle text postprocessing.</string>
     <string name="settings_option_to_traditional">Convert to Traditional Chinese</string>

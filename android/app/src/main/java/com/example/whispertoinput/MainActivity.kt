@@ -65,6 +65,7 @@ val AUTO_RECORDING_START = booleanPreferencesKey("is-auto-recording-start")
 val AUTO_SWITCH_BACK = booleanPreferencesKey("auto-switch-back")
 val ADD_TRAILING_SPACE = booleanPreferencesKey("add-trailing-space")
 val POSTPROCESSING = stringPreferencesKey("postprocessing")
+val FLOATING_KEYBOARD_LANDSCAPE = booleanPreferencesKey("floating-keyboard-landscape")
 
 class MainActivity : AppCompatActivity() {
     private var setupSettingItemsDone: Boolean = false
@@ -356,6 +357,10 @@ class MainActivity : AppCompatActivity() {
                     getString(R.string.settings_option_no) to false,
                 ), false),
                 SettingDropdown(R.id.spinner_add_trailing_space, ADD_TRAILING_SPACE, hashMapOf(
+                    getString(R.string.settings_option_yes) to true,
+                    getString(R.string.settings_option_no) to false,
+                ), false),
+                SettingDropdown(R.id.spinner_floating_keyboard_landscape, FLOATING_KEYBOARD_LANDSCAPE, hashMapOf(
                     getString(R.string.settings_option_yes) to true,
                     getString(R.string.settings_option_no) to false,
                 ), false),

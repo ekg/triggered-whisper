@@ -415,4 +415,8 @@ class WhisperKeyboard {
             height = sizePx
         }
     }
+
+    fun getKeyboardView(): View? {
+        return keyboardView
+    }
 }

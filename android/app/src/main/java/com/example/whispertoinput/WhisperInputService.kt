@@ -61,6 +61,10 @@ class WhisperInputService : InputMethodService() {
     // Track button states for modifier key detection
     private var isR1ModPressed: Boolean = false
 
+    // Floating keyboard window
+    private var floatingWindow: FloatingKeyboardWindow? = null
+    private var useFloatingKeyboard: Boolean = false
+
     private fun transcriptionCallback(text: String?) {
         if (!text.isNullOrEmpty()) {
             currentInputConnection?.commitText(text, 1)
@@ -148,6 +152,40 @@ class WhisperInputService : InputMethodService() {
         super.onConfigurationChanged(newConfig)
         val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
         whisperKeyboard.updateOrientation(isLandscape)
+
+        // Handle floating window
+        CoroutineScope(Dispatchers.Main).launch {
+            updateFloatingWindow(isLandscape)
+        }
+    }
+
+    private suspend fun updateFloatingWindow(isLandscape: Boolean) {
+        // Check if floating keyboard setting is enabled
+        useFloatingKeyboard = dataStore.data.map { preferences: Preferences ->
+            preferences[FLOATING_KEYBOARD_LANDSCAPE] ?: false
+        }.first()
+
+        if (isLandscape && useFloatingKeyboard) {
+            // Check if we have overlay permission
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (!android.provider.Settings.canDrawOverlays(this)) {
+                    // No permission - show toast and don't enable floating mode
+                    Toast.makeText(this, "Overlay permission required for floating keyboard. Enable in settings.", Toast.LENGTH_LONG).show()
+                    return
+                }
+            }
+
+            // Show floating window
+            if (floatingWindow == null) {
+                floatingWindow = FloatingKeyboardWindow(this, whisperKeyboard)
+            }
+            if (!floatingWindow!!.isShowing()) {
+                floatingWindow!!.show()
+            }
+        } else {
+            // Hide floating window
+            floatingWindow?.hide()
+        }
     }
 
     private fun onStartRecording() {
@@ -248,6 +286,11 @@ class WhisperInputService : InputMethodService() {
         CoroutineScope(Dispatchers.Main).launch {
             // Update audio format based on current backend setting
             updateAudioFormat()
+
+            // Check if we should show floating window
+            val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            updateFloatingWindow(isLandscape)
+
             if (!isFirstTime) return@launch
             isFirstTime = false
             val isAutoStartRecording = dataStore.data.map { preferences: Preferences ->
@@ -264,6 +307,7 @@ class WhisperInputService : InputMethodService() {
         whisperTranscriber.stop()
         whisperKeyboard.reset()
         recorderManager!!.stop()
+        floatingWindow?.hide()
     }
 
     override fun onDestroy() {
@@ -271,6 +315,8 @@ class WhisperInputService : InputMethodService() {
         whisperTranscriber.stop()
         whisperKeyboard.reset()
         recorderManager!!.stop()
+        floatingWindow?.hide()
+        floatingWindow = null
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
