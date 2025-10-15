@@ -19,6 +19,7 @@
 
 package com.example.whispertoinput
 
+import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.util.Log
@@ -126,8 +127,10 @@ class WhisperInputService : InputMethodService() {
         }
 
         // Returns the keyboard after setting it up and inflating its layout
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         return whisperKeyboard.setup(layoutInflater,
             shouldOfferImeSwitch,
+            isLandscape,
             { onStartRecording() },
             { onCancelRecording() },
             { attachToEnd -> onStartTranscription(attachToEnd) },
@@ -139,6 +142,12 @@ class WhisperInputService : InputMethodService() {
             { onOpenSettings() },
             { shouldShowRetry() },
         )
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        whisperKeyboard.updateOrientation(isLandscape)
     }
 
     private fun onStartRecording() {

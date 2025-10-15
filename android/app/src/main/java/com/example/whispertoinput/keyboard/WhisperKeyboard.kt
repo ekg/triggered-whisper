@@ -66,6 +66,7 @@ class WhisperKeyboard {
     // Views & Keyboard Layout
     private var keyboardView: ConstraintLayout? = null
     private var buttonMic: ImageButton? = null
+    private var buttonMicFrame: View? = null
     private var buttonEnter: ImageButton? = null
     private var buttonCancel: ImageButton? = null
     private var buttonRetry: ImageButton? = null
@@ -83,6 +84,7 @@ class WhisperKeyboard {
     fun setup(
         layoutInflater: LayoutInflater,
         shouldOfferImeSwitch: Boolean,
+        isLandscape: Boolean,
         onStartRecording: () -> Unit,
         onCancelRecording: () -> Unit,
         onStartTranscribing: (attachToEnd: String) -> Unit,
@@ -96,6 +98,7 @@ class WhisperKeyboard {
     ): View {
         // Inflate the keyboard layout & assign views
         keyboardView = layoutInflater.inflate(R.layout.keyboard_view, null) as ConstraintLayout
+        buttonMicFrame = keyboardView!!.findViewById(R.id.btn_mic_frame)
         buttonMic = keyboardView!!.findViewById(R.id.btn_mic) as ImageButton
         buttonEnter = keyboardView!!.findViewById(R.id.btn_enter) as ImageButton
         buttonCancel = keyboardView!!.findViewById(R.id.btn_cancel) as ImageButton
@@ -147,6 +150,9 @@ class WhisperKeyboard {
 
         // Resets keyboard upon setup
         reset()
+
+        // Apply initial orientation
+        updateOrientation(isLandscape)
 
         // Returns the keyboard view (non-nullable)
         return keyboardView!!
@@ -363,5 +369,50 @@ class WhisperKeyboard {
         // Update display - very compact format
         val displayText = debugKeyHistory.joinToString("\n")
         debugKeyDisplay?.text = displayText.ifEmpty { "Keys..." }
+    }
+
+    fun updateOrientation(isLandscape: Boolean) {
+        val keyboardView = keyboardView ?: return
+
+        // In landscape mode, reduce height by 25% by adjusting padding and button sizes
+        val (padding, buttonSize, micFrameSize) = if (isLandscape) {
+            // Landscape: 25% shorter (padding 1dp, buttons 24dp, mic frame 30dp)
+            Triple(1, 24, 30)
+        } else {
+            // Portrait: normal size (padding 4dp, buttons 32dp, mic frame 40dp)
+            Triple(4, 32, 40)
+        }
+
+        // Convert dp to pixels
+        val density = keyboardView.context.resources.displayMetrics.density
+        val paddingPx = (padding * density).toInt()
+        val buttonSizePx = (buttonSize * density).toInt()
+        val micFrameSizePx = (micFrameSize * density).toInt()
+
+        // Update keyboard padding
+        keyboardView.setPadding(0, paddingPx, 0, paddingPx)
+
+        // Update button sizes
+        updateButtonSize(buttonSettings, buttonSizePx)
+        updateButtonSize(buttonMic, buttonSizePx)
+        updateButtonSize(buttonEnter, buttonSizePx)
+        updateButtonSize(buttonCancel, buttonSizePx)
+        updateButtonSize(buttonRetry, buttonSizePx)
+        updateButtonSize(buttonBackspace, buttonSizePx)
+        updateButtonSize(buttonSpaceBar, buttonSizePx)
+        updateButtonSize(buttonPreviousIme, buttonSizePx)
+
+        // Update mic frame size (it's slightly larger)
+        updateButtonSize(buttonMicFrame, micFrameSizePx)
+
+        // Request layout update
+        keyboardView.requestLayout()
+    }
+
+    private fun updateButtonSize(button: View?, sizePx: Int) {
+        button?.layoutParams?.apply {
+            width = sizePx
+            height = sizePx
+        }
     }
 }
