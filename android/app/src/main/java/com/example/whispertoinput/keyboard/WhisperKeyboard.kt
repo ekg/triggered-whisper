@@ -371,15 +371,16 @@ class WhisperKeyboard {
         debugKeyDisplay?.text = displayText.ifEmpty { "Keys..." }
     }
 
-    fun updateOrientation(isLandscape: Boolean) {
+    fun updateOrientation(isLandscape: Boolean, applyReduction: Boolean = true) {
         val keyboardView = keyboardView ?: return
 
         // In landscape mode, reduce height by 25% by adjusting padding and button sizes
-        val (padding, buttonSize, micFrameSize) = if (isLandscape) {
-            // Landscape: 25% shorter (padding 1dp, buttons 24dp, mic frame 30dp)
+        // However, if applyReduction is false (e.g., when using floating mode), keep full portrait size
+        val (padding, buttonSize, micFrameSize) = if (isLandscape && applyReduction) {
+            // Landscape with reduction: 25% shorter (padding 1dp, buttons 24dp, mic frame 30dp)
             Triple(1, 24, 30)
         } else {
-            // Portrait: normal size (padding 4dp, buttons 32dp, mic frame 40dp)
+            // Portrait or landscape without reduction: normal size (padding 4dp, buttons 32dp, mic frame 40dp)
             Triple(4, 32, 40)
         }
 

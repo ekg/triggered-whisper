@@ -151,10 +151,18 @@ class WhisperInputService : InputMethodService() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
-        whisperKeyboard.updateOrientation(isLandscape)
 
-        // Handle floating window
+        // Check floating mode setting to determine if we should apply size reduction
         CoroutineScope(Dispatchers.Main).launch {
+            val willUseFloating = isLandscape && dataStore.data.map { preferences: Preferences ->
+                preferences[FLOATING_KEYBOARD_LANDSCAPE] ?: false
+            }.first()
+
+            // If using floating mode, don't apply reduction (keep full portrait size)
+            // If in landscape without floating, apply 25% reduction
+            whisperKeyboard.updateOrientation(isLandscape, applyReduction = !willUseFloating)
+
+            // Handle floating window
             updateFloatingWindow(isLandscape)
         }
     }
@@ -287,8 +295,15 @@ class WhisperInputService : InputMethodService() {
             // Update audio format based on current backend setting
             updateAudioFormat()
 
-            // Check if we should show floating window
+            // Check if we should show floating window and update orientation accordingly
             val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            val willUseFloating = isLandscape && dataStore.data.map { preferences: Preferences ->
+                preferences[FLOATING_KEYBOARD_LANDSCAPE] ?: false
+            }.first()
+
+            // Update orientation with correct reduction setting
+            whisperKeyboard.updateOrientation(isLandscape, applyReduction = !willUseFloating)
+
             updateFloatingWindow(isLandscape)
 
             if (!isFirstTime) return@launch
