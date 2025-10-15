@@ -232,6 +232,22 @@
                 android:padding="12dp"
                 android:minLines="6" />
 
+            <!-- Controller Button Reference -->
+            <TextView
+                style="@style/SettingsLabel"
+                android:layout_marginTop="24dp"
+                android:text="Controller Button Reference" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:background="#80000000"
+                android:padding="12dp"
+                android:text="BASIC:\nL1 = Listen (toggle)\nA = Ctrl+R (fzf)\nB = Enter\nX = Delete\nY = Space\n\nMODIFIER (hold R1):\nR1+L1 = New pane\nR1+A = Ctrl+Q (cmd mode)\nR1+X = Ctrl+D (exit)\nR1+Y = Ctrl+C (cancel)\n\nTRIGGERS:\nL2 = Prev window\nR2 = Next window" />
+
         </LinearLayout>
     </ScrollView>
 
