@@ -57,6 +57,10 @@ class WhisperInputService : InputMethodService() {
     private var useOggFormat: Boolean = false
     private var isFirstTime: Boolean = true
 
+    // Track button states for combination detection
+    private var isL2Pressed: Boolean = false
+    private var isR2Pressed: Boolean = false
+
     private fun transcriptionCallback(text: String?) {
         if (!text.isNullOrEmpty()) {
             currentInputConnection?.commitText(text, 1)
@@ -285,36 +289,64 @@ class WhisperInputService : InputMethodService() {
                 return true  // Consume the event
             }
             KeyEvent.KEYCODE_BUTTON_L2 -> {
-                // L2: Send Ctrl+Q P (tmux previous window)
-                Log.d("whisper-input", "L2 pressed, sending Ctrl+Q P")
-                whisperKeyboard.displayKeyEvent(keyCode, "◀️ TMUX PREV")
-                sendTmuxSequence(KeyEvent.KEYCODE_P)
+                isL2Pressed = true
+                // Check if R2 is already pressed (combination)
+                if (isR2Pressed) {
+                    // L2+R2: Create new tmux window (Ctrl+Q C)
+                    Log.d("whisper-input", "L2+R2 pressed, sending Ctrl+Q C")
+                    whisperKeyboard.displayKeyEvent(keyCode, "➕ TMUX NEW")
+                    sendTmuxSequence('c')
+                } else {
+                    // L2 alone: Send Ctrl+Q P (tmux previous window)
+                    Log.d("whisper-input", "L2 pressed, sending Ctrl+Q P")
+                    whisperKeyboard.displayKeyEvent(keyCode, "◀️ TMUX PREV")
+                    sendTmuxSequence('p')
+                }
                 return true
             }
             KeyEvent.KEYCODE_BUTTON_R2 -> {
-                // R2: Send Ctrl+Q N (tmux next window)
-                Log.d("whisper-input", "R2 pressed, sending Ctrl+Q N")
-                whisperKeyboard.displayKeyEvent(keyCode, "▶️ TMUX NEXT")
-                sendTmuxSequence(KeyEvent.KEYCODE_N)
+                isR2Pressed = true
+                // Check if L2 is already pressed (combination)
+                if (isL2Pressed) {
+                    // L2+R2: Create new tmux window (Ctrl+Q C)
+                    Log.d("whisper-input", "L2+R2 pressed, sending Ctrl+Q C")
+                    whisperKeyboard.displayKeyEvent(keyCode, "➕ TMUX NEW")
+                    sendTmuxSequence('c')
+                } else {
+                    // R2 alone: Send Ctrl+Q N (tmux next window)
+                    Log.d("whisper-input", "R2 pressed, sending Ctrl+Q N")
+                    whisperKeyboard.displayKeyEvent(keyCode, "▶️ TMUX NEXT")
+                    sendTmuxSequence('n')
+                }
                 return true
             }
         }
         return super.onKeyDown(keyCode, event)
     }
 
-    private fun sendTmuxSequence(finalKey: Int) {
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        // Track button releases for combination detection
+        when (keyCode) {
+            KeyEvent.KEYCODE_BUTTON_L2 -> {
+                isL2Pressed = false
+                return true
+            }
+            KeyEvent.KEYCODE_BUTTON_R2 -> {
+                isR2Pressed = false
+                return true
+            }
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
+    private fun sendTmuxSequence(finalChar: Char) {
         val inputConnection = currentInputConnection ?: return
 
-        // Send Ctrl+Q as actual control character (ASCII 17), then p or n
+        // Send Ctrl+Q as actual control character (ASCII 17), then the command letter
         // Ctrl+Q = 0x11 (17 in decimal)
         val ctrlQ = "\u0011"  // Ctrl+Q control character
-        val finalChar = when (finalKey) {
-            KeyEvent.KEYCODE_P -> "p"
-            KeyEvent.KEYCODE_N -> "n"
-            else -> return
-        }
 
-        // Send Ctrl+Q followed by the letter
+        // Send Ctrl+Q followed by the letter (p=previous, n=next, c=create)
         inputConnection.commitText(ctrlQ + finalChar, 1)
     }
 }
