@@ -303,25 +303,28 @@ class WhisperInputService : InputMethodService() {
     private fun sendTmuxSequence(finalKey: Int) {
         val inputConnection = currentInputConnection ?: return
 
-        // Send: Ctrl down, Q down, finalKey down, finalKey up, Q up, Ctrl up
+        // Send lowercase Ctrl+Q followed by lowercase p or n
+        // The sequence is: Ctrl down, q (lowercase) down, q up, p/n (lowercase) down, p/n up, Ctrl up
+
         // Ctrl down
         inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT))
-        // Q down
+
+        // Send lowercase 'q' with Ctrl
         inputConnection.sendKeyEvent(KeyEvent(
             0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_Q, 0, KeyEvent.META_CTRL_ON
         ))
-        // Final key (P or N) down
-        inputConnection.sendKeyEvent(KeyEvent(
-            0, 0, KeyEvent.ACTION_DOWN, finalKey, 0, KeyEvent.META_CTRL_ON
-        ))
-        // Final key up
-        inputConnection.sendKeyEvent(KeyEvent(
-            0, 0, KeyEvent.ACTION_UP, finalKey, 0, KeyEvent.META_CTRL_ON
-        ))
-        // Q up
         inputConnection.sendKeyEvent(KeyEvent(
             0, 0, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_Q, 0, KeyEvent.META_CTRL_ON
         ))
+
+        // Send lowercase final key (p or n) with Ctrl still held
+        inputConnection.sendKeyEvent(KeyEvent(
+            0, 0, KeyEvent.ACTION_DOWN, finalKey, 0, KeyEvent.META_CTRL_ON
+        ))
+        inputConnection.sendKeyEvent(KeyEvent(
+            0, 0, KeyEvent.ACTION_UP, finalKey, 0, KeyEvent.META_CTRL_ON
+        ))
+
         // Ctrl up
         inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT))
     }
