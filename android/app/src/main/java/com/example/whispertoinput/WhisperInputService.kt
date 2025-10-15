@@ -57,9 +57,8 @@ class WhisperInputService : InputMethodService() {
     private var useOggFormat: Boolean = false
     private var isFirstTime: Boolean = true
 
-    // Track button states for combination detection
-    private var isL2Pressed: Boolean = false
-    private var isR2Pressed: Boolean = false
+    // Track button states for modifier key detection
+    private var isR1ModPressed: Boolean = false
 
     private fun transcriptionCallback(text: String?) {
         if (!text.isNullOrEmpty()) {
@@ -274,50 +273,72 @@ class WhisperInputService : InputMethodService() {
         // Display ALL key events in debug panel
         whisperKeyboard.displayKeyEvent(keyCode, keyName)
 
-        // Map controller buttons
+        // Map controller buttons with new modifier scheme
         when (keyCode) {
-            KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1 -> {
-                // L1 or R1: Toggle recording (same as mic button)
-                Log.d("whisper-input", "Shoulder button pressed, toggling recording")
-                whisperKeyboard.toggleRecording()
-                return true  // Consume the event
+            KeyEvent.KEYCODE_BUTTON_L1 -> {
+                if (isR1ModPressed) {
+                    // R1+L1: New tmux pane (horizontal split - Ctrl+Q ")
+                    Log.d("whisper-input", "R1+L1 pressed, creating new tmux pane")
+                    whisperKeyboard.displayKeyEvent(keyCode, "➕ NEW PANE")
+                    sendTmuxSequence('"')
+                } else {
+                    // L1 alone: Toggle recording (listen)
+                    Log.d("whisper-input", "L1 pressed, toggling recording")
+                    whisperKeyboard.toggleRecording()
+                }
+                return true
+            }
+            KeyEvent.KEYCODE_BUTTON_R1 -> {
+                // R1: Modifier key
+                isR1ModPressed = true
+                Log.d("whisper-input", "R1 mod key pressed")
+                whisperKeyboard.displayKeyEvent(keyCode, "🔧 MOD")
+                return true
+            }
+            KeyEvent.KEYCODE_BUTTON_X -> {
+                if (isR1ModPressed) {
+                    // R1+X: Send Ctrl+D (exit/logout)
+                    Log.d("whisper-input", "R1+X pressed, sending Ctrl+D")
+                    whisperKeyboard.displayKeyEvent(keyCode, "🚪 CTRL+D")
+                    sendControlChar('d')
+                } else {
+                    // X alone: Delete
+                    Log.d("whisper-input", "X pressed, delete")
+                    onDeleteText()
+                }
+                return true
+            }
+            KeyEvent.KEYCODE_BUTTON_Y -> {
+                if (isR1ModPressed) {
+                    // R1+Y: Send Ctrl+C (cancel/interrupt)
+                    Log.d("whisper-input", "R1+Y pressed, sending Ctrl+C")
+                    whisperKeyboard.displayKeyEvent(keyCode, "❌ CTRL+C")
+                    sendControlChar('c')
+                } else {
+                    // Y alone: Space
+                    Log.d("whisper-input", "Y pressed, space")
+                    onSpaceBar()
+                }
+                return true
             }
             KeyEvent.KEYCODE_BUTTON_B -> {
                 // Button B: Trigger enter (stop recording with newline, or send enter)
                 Log.d("whisper-input", "Button B pressed, triggering enter")
                 whisperKeyboard.triggerEnter()
-                return true  // Consume the event
+                return true
             }
             KeyEvent.KEYCODE_BUTTON_L2 -> {
-                isL2Pressed = true
-                // Check if R2 is already pressed (combination)
-                if (isR2Pressed) {
-                    // L2+R2: Create new tmux window (Ctrl+Q C)
-                    Log.d("whisper-input", "L2+R2 pressed, sending Ctrl+Q C")
-                    whisperKeyboard.displayKeyEvent(keyCode, "➕ TMUX NEW")
-                    sendTmuxSequence('c')
-                } else {
-                    // L2 alone: Send Ctrl+Q P (tmux previous window)
-                    Log.d("whisper-input", "L2 pressed, sending Ctrl+Q P")
-                    whisperKeyboard.displayKeyEvent(keyCode, "◀️ TMUX PREV")
-                    sendTmuxSequence('p')
-                }
+                // L2: Send Ctrl+R (fzf autocomplete)
+                Log.d("whisper-input", "L2 pressed, sending Ctrl+R")
+                whisperKeyboard.displayKeyEvent(keyCode, "🔍 FZF")
+                sendControlChar('r')
                 return true
             }
             KeyEvent.KEYCODE_BUTTON_R2 -> {
-                isR2Pressed = true
-                // Check if L2 is already pressed (combination)
-                if (isL2Pressed) {
-                    // L2+R2: Create new tmux window (Ctrl+Q C)
-                    Log.d("whisper-input", "L2+R2 pressed, sending Ctrl+Q C")
-                    whisperKeyboard.displayKeyEvent(keyCode, "➕ TMUX NEW")
-                    sendTmuxSequence('c')
-                } else {
-                    // R2 alone: Send Ctrl+Q N (tmux next window)
-                    Log.d("whisper-input", "R2 pressed, sending Ctrl+Q N")
-                    whisperKeyboard.displayKeyEvent(keyCode, "▶️ TMUX NEXT")
-                    sendTmuxSequence('n')
-                }
+                // R2: Send Ctrl+Q N (tmux next window)
+                Log.d("whisper-input", "R2 pressed, sending Ctrl+Q N")
+                whisperKeyboard.displayKeyEvent(keyCode, "▶️ NEXT")
+                sendTmuxSequence('n')
                 return true
             }
         }
@@ -325,18 +346,25 @@ class WhisperInputService : InputMethodService() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        // Track button releases for combination detection
+        // Track button releases for modifier key
         when (keyCode) {
-            KeyEvent.KEYCODE_BUTTON_L2 -> {
-                isL2Pressed = false
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_R2 -> {
-                isR2Pressed = false
+            KeyEvent.KEYCODE_BUTTON_R1 -> {
+                isR1ModPressed = false
+                Log.d("whisper-input", "R1 mod key released")
                 return true
             }
         }
         return super.onKeyUp(keyCode, event)
+    }
+
+    private fun sendControlChar(char: Char) {
+        val inputConnection = currentInputConnection ?: return
+
+        // Send control character (Ctrl+char)
+        // Control characters are ASCII values 1-26 for Ctrl+A through Ctrl+Z
+        // Formula: ASCII value = (char.uppercaseChar() - 'A' + 1)
+        val controlCode = (char.uppercaseChar() - 'A' + 1).toChar()
+        inputConnection.commitText(controlCode.toString(), 1)
     }
 
     private fun sendTmuxSequence(finalChar: Char) {
@@ -346,7 +374,7 @@ class WhisperInputService : InputMethodService() {
         // Ctrl+Q = 0x11 (17 in decimal)
         val ctrlQ = "\u0011"  // Ctrl+Q control character
 
-        // Send Ctrl+Q followed by the letter (p=previous, n=next, c=create)
+        // Send Ctrl+Q followed by the letter (p=previous, n=next, c=create, ")
         inputConnection.commitText(ctrlQ + finalChar, 1)
     }
 }
