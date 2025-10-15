@@ -284,7 +284,45 @@ class WhisperInputService : InputMethodService() {
                 whisperKeyboard.triggerEnter()
                 return true  // Consume the event
             }
+            KeyEvent.KEYCODE_BUTTON_L2 -> {
+                // L2: Send Ctrl+Q P (tmux previous window)
+                Log.d("whisper-input", "L2 pressed, sending Ctrl+Q P")
+                sendTmuxSequence(KeyEvent.KEYCODE_P)
+                return true
+            }
+            KeyEvent.KEYCODE_BUTTON_R2 -> {
+                // R2: Send Ctrl+Q N (tmux next window)
+                Log.d("whisper-input", "R2 pressed, sending Ctrl+Q N")
+                sendTmuxSequence(KeyEvent.KEYCODE_N)
+                return true
+            }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    private fun sendTmuxSequence(finalKey: Int) {
+        val inputConnection = currentInputConnection ?: return
+
+        // Send: Ctrl down, Q down, finalKey down, finalKey up, Q up, Ctrl up
+        // Ctrl down
+        inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT))
+        // Q down
+        inputConnection.sendKeyEvent(KeyEvent(
+            0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_Q, 0, KeyEvent.META_CTRL_ON
+        ))
+        // Final key (P or N) down
+        inputConnection.sendKeyEvent(KeyEvent(
+            0, 0, KeyEvent.ACTION_DOWN, finalKey, 0, KeyEvent.META_CTRL_ON
+        ))
+        // Final key up
+        inputConnection.sendKeyEvent(KeyEvent(
+            0, 0, KeyEvent.ACTION_UP, finalKey, 0, KeyEvent.META_CTRL_ON
+        ))
+        // Q up
+        inputConnection.sendKeyEvent(KeyEvent(
+            0, 0, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_Q, 0, KeyEvent.META_CTRL_ON
+        ))
+        // Ctrl up
+        inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT))
     }
 }
