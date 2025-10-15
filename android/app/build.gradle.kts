@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.whispertoinput.controller"
         minSdk = 24
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.13-controller"
+        versionCode = 14
+        versionName = "0.14-controller"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

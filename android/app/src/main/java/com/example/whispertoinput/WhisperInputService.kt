@@ -302,10 +302,10 @@ class WhisperInputService : InputMethodService() {
                     whisperKeyboard.displayKeyEvent(keyCode, "⌨️ CTRL+Q")
                     sendControlChar('q')
                 } else {
-                    // A alone: Vertical split (left/right panes - Ctrl+Q %)
-                    Log.d("whisper-input", "A pressed, vertical split")
-                    whisperKeyboard.displayKeyEvent(keyCode, "⬌ VSPLIT")
-                    sendTmuxSequence('%')
+                    // A alone: Ctrl+R (fzf autocomplete)
+                    Log.d("whisper-input", "A pressed, sending Ctrl+R")
+                    whisperKeyboard.displayKeyEvent(keyCode, "🔍 FZF")
+                    sendControlChar('r')
                 }
                 return true
             }
@@ -342,10 +342,10 @@ class WhisperInputService : InputMethodService() {
                 return true
             }
             KeyEvent.KEYCODE_BUTTON_L2 -> {
-                // L2: Send Ctrl+R (fzf autocomplete)
-                Log.d("whisper-input", "L2 pressed, sending Ctrl+R")
-                whisperKeyboard.displayKeyEvent(keyCode, "🔍 FZF")
-                sendControlChar('r')
+                // L2: Send Ctrl+Q P (tmux previous window)
+                Log.d("whisper-input", "L2 pressed, sending Ctrl+Q P")
+                whisperKeyboard.displayKeyEvent(keyCode, "◀️ PREV")
+                sendTmuxSequence('p')
                 return true
             }
             KeyEvent.KEYCODE_BUTTON_R2 -> {
