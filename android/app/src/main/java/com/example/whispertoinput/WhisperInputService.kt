@@ -295,6 +295,20 @@ class WhisperInputService : InputMethodService() {
                 whisperKeyboard.displayKeyEvent(keyCode, "🔧 MOD")
                 return true
             }
+            KeyEvent.KEYCODE_BUTTON_A -> {
+                if (isR1ModPressed) {
+                    // R1+A: Send just Ctrl+Q (tmux command mode, then user can press arrows)
+                    Log.d("whisper-input", "R1+A pressed, sending Ctrl+Q")
+                    whisperKeyboard.displayKeyEvent(keyCode, "⌨️ CTRL+Q")
+                    sendControlChar('q')
+                } else {
+                    // A alone: Vertical split (left/right panes - Ctrl+Q %)
+                    Log.d("whisper-input", "A pressed, vertical split")
+                    whisperKeyboard.displayKeyEvent(keyCode, "⬌ VSPLIT")
+                    sendTmuxSequence('%')
+                }
+                return true
+            }
             KeyEvent.KEYCODE_BUTTON_X -> {
                 if (isR1ModPressed) {
                     // R1+X: Send Ctrl+D (exit/logout)
