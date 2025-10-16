@@ -4,10 +4,11 @@ Triggered Whisper is a controller-optimized fork of [Whisper To Input](https://g
 
 ## Key Features
 
-- **Bluetooth Controller Support**: Full button mapping for game controllers (tested with 8BitDo micro BT)
-- **Modifier Key System**: R1 acts as a modifier for advanced combos
-- **tmux Integration**: Built-in shortcuts for tmux window/pane management
-- **Compact UI**: Minimal keyboard layout optimized for controller-only use
+- **8BitDo Micro Bluetooth Controller Support**: Optimized for the 8BitDo Micro Bluetooth Gamepad, a tiny portable controller perfect for AR workflows
+- **Floating Keyboard Mode**: In landscape, keyboard displays as a draggable overlay window that stays on top, allowing you to position it anywhere on screen
+- **Modifier Key System**: R1 acts as a modifier for advanced combos with visual feedback
+- **tmux Integration**: Built-in shortcuts for tmux window/pane management (Ctrl+Q based)
+- **Compact UI**: Minimal keyboard layout (25% shorter in landscape without floating mode)
 - **Side-by-side Installation**: Installs alongside original Whisper To Input app
 
 ## Installation
@@ -38,6 +39,44 @@ Follow the same installation steps as [Whisper To Input](https://github.com/j3so
 
 ### Visual Feedback
 All commands show emoji indicators in the debug display (green text area on left side of keyboard), so you can see exactly what button was pressed.
+
+## Floating Keyboard Mode
+
+The floating keyboard feature allows the keyboard to appear as a draggable overlay window in landscape mode:
+
+### Setup
+1. Open Triggered Whisper settings
+2. Enable "Floating Keyboard in Landscape"
+3. Click "Apply" - this will automatically open Triggered Whisper's app permissions page
+4. Scroll down and tap "Display over other apps"
+5. Enable the permission
+6. Return to your app and switch to landscape mode
+
+### Features
+- **Draggable**: Touch and drag any non-button area to reposition the window
+- **Portrait Dimensions**: Maintains full portrait keyboard size (no 25% reduction)
+- **Stable Layout**: Cancel button always visible to prevent layout reorganization
+- **Persistent**: Stays on top of other apps, ideal for terminal workflows
+
+### Quirks
+- Permission must be granted manually through Android settings (cannot be requested via standard permission dialog)
+- When enabled, the floating window appears automatically in landscape orientation
+- Keyboard dimensions are locked while floating to prevent size changes during recording/transcribing
+- The keyboard appears as a title bar/overlay that can be moved to any edge of the screen
+
+## 8BitDo Micro Controller Notes
+
+The **8BitDo Micro Bluetooth Gamepad** is a tiny, portable controller perfect for this use case:
+- Ultra-compact size (fits on a keychain)
+- Rechargeable via USB-C
+- All standard gamepad buttons (face buttons, triggers, bumpers)
+- Excellent Bluetooth connectivity
+- Perfect for AR glasses + terminal workflows
+
+### Connection
+1. Put controller in pairing mode (hold Start + Y)
+2. Connect via Android Bluetooth settings
+3. Controller buttons will be immediately recognized by Triggered Whisper
 
 ## Use Cases
 
@@ -90,9 +129,12 @@ git push -u origin feature/bluetooth-controller-support
 - Package ID: `com.example.whispertoinput.controller`
 - App name: "Triggered Whisper"
 - Keyboard name: "Triggered Input"
-- Compact horizontal keyboard layout (~40dp height)
-- Full Bluetooth controller support with modifier system
-- Debug display showing last 2 key events
+- Compact horizontal keyboard layout (25% height reduction in landscape, or full size in floating mode)
+- Full Bluetooth controller support with modifier system (8BitDo Micro tested)
+- Floating keyboard mode with draggable overlay window
+- Debug display showing last 2 key events with emoji feedback
+- Always-visible cancel button for stable layout
+- Dimension locking system to prevent size changes during state transitions
 
 ## License
 

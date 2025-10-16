@@ -182,19 +182,18 @@ class WhisperInputService : InputMethodService() {
                 val hasPermission = android.provider.Settings.canDrawOverlays(this)
                 Log.d("whisper-input", "Overlay permission check: hasPermission=$hasPermission")
                 if (!hasPermission) {
-                    // No permission - show toast and offer to open settings
-                    Toast.makeText(this, "Overlay permission required for floating keyboard. Opening settings...", Toast.LENGTH_LONG).show()
+                    // No permission - show toast and open app permissions page
+                    Toast.makeText(this, "Opening Triggered Whisper permissions. Enable 'Display over other apps'", Toast.LENGTH_LONG).show()
 
-                    // Open settings page for overlay permission
+                    // Open app permissions page
                     try {
-                        val intent = Intent(
-                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            android.net.Uri.parse("package:$packageName")
-                        )
+                        val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        intent.data = android.net.Uri.parse("package:$packageName")
+                        intent.addCategory(Intent.CATEGORY_DEFAULT)
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         startActivity(intent)
                     } catch (e: Exception) {
-                        Log.e("whisper-input", "Failed to open overlay permission settings", e)
+                        Log.e("whisper-input", "Failed to open app permissions settings", e)
                         Toast.makeText(this, "Please enable 'Display over other apps' in Android Settings > Apps > Triggered Whisper", Toast.LENGTH_LONG).show()
                     }
                     return

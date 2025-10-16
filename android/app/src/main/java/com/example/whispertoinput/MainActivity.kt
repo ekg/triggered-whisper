@@ -390,17 +390,17 @@ class MainActivity : AppCompatActivity() {
                         // Check if we have overlay permission
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                             if (!Settings.canDrawOverlays(this@MainActivity)) {
-                                // Need to request overlay permission
+                                // Need to request overlay permission - go to app permissions page
                                 needsPermission = true
-                                Toast.makeText(this@MainActivity, "Opening permission settings for floating keyboard...", Toast.LENGTH_LONG).show()
+                                Toast.makeText(this@MainActivity, "Opening Triggered Whisper permissions. Enable 'Display over other apps'", Toast.LENGTH_LONG).show()
                                 try {
-                                    val intent = Intent(
-                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                        Uri.parse("package:$packageName")
-                                    )
+                                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                    intent.data = Uri.parse("package:$packageName")
+                                    intent.addCategory(Intent.CATEGORY_DEFAULT)
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     startActivity(intent)
                                 } catch (e: Exception) {
-                                    Toast.makeText(this@MainActivity, "Please enable 'Display over other apps' in Android Settings", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(this@MainActivity, "Please enable 'Display over other apps' in Android Settings > Apps > Triggered Whisper", Toast.LENGTH_LONG).show()
                                 }
                             }
                         }
