@@ -152,8 +152,8 @@ class WhisperKeyboard {
         // Resets keyboard upon setup
         reset()
 
-        // Apply initial orientation
-        updateOrientation(isLandscape)
+        // Don't apply initial orientation here - let onWindowShown() handle it
+        // to ensure correct sizing with floating mode settings
 
         // Returns the keyboard view (non-nullable)
         return keyboardView!!
