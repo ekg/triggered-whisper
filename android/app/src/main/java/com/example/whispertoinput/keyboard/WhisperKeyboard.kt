@@ -78,7 +78,6 @@ class WhisperKeyboard {
     private var waitingIcon: ProgressBar? = null
     private var buttonBackspace: BackspaceButton? = null
     private var buttonPreviousIme: ImageButton? = null
-    private var buttonSettings: ImageButton? = null
     private var micRippleContainer: ConstraintLayout? = null
     private var micRipples: Array<ImageView> = emptyArray()
     private var debugKeyDisplay: TextView? = null
@@ -112,7 +111,6 @@ class WhisperKeyboard {
         waitingIcon = keyboardView!!.findViewById(R.id.pb_waiting_icon) as ProgressBar
         buttonBackspace = keyboardView!!.findViewById(R.id.btn_backspace) as BackspaceButton
         buttonPreviousIme = keyboardView!!.findViewById(R.id.btn_previous_ime) as ImageButton
-        buttonSettings = keyboardView!!.findViewById(R.id.btn_settings) as ImageButton
         micRippleContainer = keyboardView!!.findViewById(R.id.mic_ripples) as ConstraintLayout
         micRipples = arrayOf(
             keyboardView!!.findViewById(R.id.mic_ripple_0) as ImageView,
@@ -132,7 +130,6 @@ class WhisperKeyboard {
         buttonEnter!!.setOnClickListener { onButtonEnterClick() }
         buttonCancel!!.setOnClickListener { onButtonCancelClick() }
         buttonRetry!!.setOnClickListener { onButtonRetryClick() }
-        buttonSettings!!.setOnClickListener { onButtonSettingsClick() }
         buttonBackspace!!.setBackspaceCallback { onButtonBackspaceClick() }
         buttonSpaceBar!!.setOnClickListener { onButtonSpaceBarClick() }
 
@@ -429,7 +426,6 @@ class WhisperKeyboard {
         keyboardView.setPadding(0, paddingPx, 0, paddingPx)
 
         // Update button sizes
-        updateButtonSize(buttonSettings, buttonSizePx)
         updateButtonSize(buttonMic, buttonSizePx)
         updateButtonSize(buttonEnter, buttonSizePx)
         updateButtonSize(buttonCancel, buttonSizePx)
