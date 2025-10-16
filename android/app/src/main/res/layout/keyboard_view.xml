@@ -39,7 +39,7 @@
         android:layout_height="wrap_content"
         android:text="Keys..."
         android:textColor="#00FF00"
-        android:textSize="8sp"
+        android:textSize="4sp"
         android:maxLines="3"
         android:fontFamily="monospace"
         android:background="#80000000"
