@@ -66,9 +66,26 @@ class WhisperInputService : InputMethodService() {
     private var useFloatingKeyboard: Boolean = false
     private var isCurrentlyFloating: Boolean = false
 
+    // Recording time tracking for WPM calculation
+    private var recordingStartTime: Long = 0
+
     private fun transcriptionCallback(text: String?) {
         if (!text.isNullOrEmpty()) {
             currentInputConnection?.commitText(text, 1)
+
+            // Calculate WPM (words per minute)
+            val recordingDurationMs = System.currentTimeMillis() - recordingStartTime
+            val recordingDurationMin = recordingDurationMs / 60000.0
+            val wordCount = text.trim().split("\\s+".toRegex()).size
+            val wpm = if (recordingDurationMin > 0) {
+                (wordCount / recordingDurationMin).toInt()
+            } else {
+                0
+            }
+
+            // Display WPM and word count
+            whisperKeyboard.displayWPM(wpm, wordCount, recordingDurationMs)
+
             // Check if auto-switch-back is enabled and switch if so
             CoroutineScope(Dispatchers.Main).launch {
                 val autoSwitchBack = dataStore.data.map { preferences: Preferences ->
@@ -231,6 +248,9 @@ class WhisperInputService : InputMethodService() {
             whisperKeyboard.reset()
             return
         }
+
+        // Track recording start time for WPM calculation
+        recordingStartTime = System.currentTimeMillis()
 
         recorderManager!!.start(this, recordedAudioFilename, useOggFormat)
     }

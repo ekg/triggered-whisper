@@ -83,6 +83,7 @@ class WhisperKeyboard {
     private var micRipples: Array<ImageView> = emptyArray()
     private var debugKeyDisplay: TextView? = null
     private val debugKeyHistory = mutableListOf<String>()
+    private var wpmText: String = "WPM: --"
 
     fun setup(
         layoutInflater: LayoutInflater,
@@ -372,9 +373,24 @@ class WhisperKeyboard {
             debugKeyHistory.removeAt(debugKeyHistory.size - 1)
         }
 
-        // Update display - very compact format
-        val displayText = debugKeyHistory.joinToString("\n")
-        debugKeyDisplay?.text = displayText.ifEmpty { "Keys..." }
+        // Update display with key events on top, WPM on bottom
+        updateDebugDisplay()
+    }
+
+    fun displayWPM(wpm: Int, wordCount: Int, durationMs: Long) {
+        // Format: "WPM: 120 (15w/7.5s)"
+        val durationSec = durationMs / 1000.0
+        wpmText = "WPM: $wpm (${wordCount}w/${String.format("%.1f", durationSec)}s)"
+        updateDebugDisplay()
+    }
+
+    private fun updateDebugDisplay() {
+        // Two line format:
+        // Line 1: Key events (most recent first)
+        // Line 2: WPM stats
+        val keyText = debugKeyHistory.joinToString("\n").ifEmpty { "Keys..." }
+        val displayText = "$keyText\n$wpmText"
+        debugKeyDisplay?.text = displayText
     }
 
     fun lockDimensions() {
