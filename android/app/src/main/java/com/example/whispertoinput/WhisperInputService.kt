@@ -64,6 +64,7 @@ class WhisperInputService : InputMethodService() {
     // Floating keyboard window
     private var floatingWindow: FloatingKeyboardWindow? = null
     private var useFloatingKeyboard: Boolean = false
+    private var isCurrentlyFloating: Boolean = false
 
     private fun transcriptionCallback(text: String?) {
         if (!text.isNullOrEmpty()) {
@@ -173,26 +174,53 @@ class WhisperInputService : InputMethodService() {
             preferences[FLOATING_KEYBOARD_LANDSCAPE] ?: false
         }.first()
 
+        Log.d("whisper-input", "updateFloatingWindow: isLandscape=$isLandscape, useFloatingKeyboard=$useFloatingKeyboard")
+
         if (isLandscape && useFloatingKeyboard) {
             // Check if we have overlay permission
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (!android.provider.Settings.canDrawOverlays(this)) {
-                    // No permission - show toast and don't enable floating mode
-                    Toast.makeText(this, "Overlay permission required for floating keyboard. Enable in settings.", Toast.LENGTH_LONG).show()
+                val hasPermission = android.provider.Settings.canDrawOverlays(this)
+                Log.d("whisper-input", "Overlay permission check: hasPermission=$hasPermission")
+                if (!hasPermission) {
+                    // No permission - show toast and offer to open settings
+                    Toast.makeText(this, "Overlay permission required for floating keyboard. Opening settings...", Toast.LENGTH_LONG).show()
+
+                    // Open settings page for overlay permission
+                    try {
+                        val intent = Intent(
+                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:$packageName")
+                        )
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        Log.e("whisper-input", "Failed to open overlay permission settings", e)
+                        Toast.makeText(this, "Please enable 'Display over other apps' in Android Settings > Apps > Triggered Whisper", Toast.LENGTH_LONG).show()
+                    }
                     return
                 }
             }
 
             // Show floating window
+            Log.d("whisper-input", "Attempting to show floating window...")
             if (floatingWindow == null) {
+                Log.d("whisper-input", "Creating new FloatingKeyboardWindow")
                 floatingWindow = FloatingKeyboardWindow(this, whisperKeyboard)
             }
             if (!floatingWindow!!.isShowing()) {
+                Log.d("whisper-input", "Calling floatingWindow.show()")
+                whisperKeyboard.lockDimensions()  // Lock dimensions before showing
                 floatingWindow!!.show()
+                isCurrentlyFloating = true
+            } else {
+                Log.d("whisper-input", "Floating window already showing")
             }
         } else {
+            Log.d("whisper-input", "Hiding floating window (if any)")
             // Hide floating window
             floatingWindow?.hide()
+            whisperKeyboard.unlockDimensions()  // Unlock dimensions when hiding
+            isCurrentlyFloating = false
         }
     }
 
@@ -323,6 +351,8 @@ class WhisperInputService : InputMethodService() {
         whisperKeyboard.reset()
         recorderManager!!.stop()
         floatingWindow?.hide()
+        whisperKeyboard.unlockDimensions()
+        isCurrentlyFloating = false
     }
 
     override fun onDestroy() {
@@ -331,7 +361,9 @@ class WhisperInputService : InputMethodService() {
         whisperKeyboard.reset()
         recorderManager!!.stop()
         floatingWindow?.hide()
+        whisperKeyboard.unlockDimensions()
         floatingWindow = null
+        isCurrentlyFloating = false
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

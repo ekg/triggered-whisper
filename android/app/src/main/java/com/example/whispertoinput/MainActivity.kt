@@ -379,8 +379,37 @@ class MainActivity : AppCompatActivity() {
                         settingItem.apply()
                     }
                     btnApply.isEnabled = false
+
+                    // Check if floating keyboard was enabled and request permission if needed
+                    val floatingEnabled = dataStore.data.map { preferences ->
+                        preferences[FLOATING_KEYBOARD_LANDSCAPE] ?: false
+                    }.first()
+
+                    var needsPermission = false
+                    if (floatingEnabled) {
+                        // Check if we have overlay permission
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                            if (!Settings.canDrawOverlays(this@MainActivity)) {
+                                // Need to request overlay permission
+                                needsPermission = true
+                                Toast.makeText(this@MainActivity, "Opening permission settings for floating keyboard...", Toast.LENGTH_LONG).show()
+                                try {
+                                    val intent = Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:$packageName")
+                                    )
+                                    startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(this@MainActivity, "Please enable 'Display over other apps' in Android Settings", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }
+
+                    if (!needsPermission) {
+                        Toast.makeText(this@MainActivity, R.string.successfully_set, Toast.LENGTH_SHORT).show()
+                    }
                 }
-                Toast.makeText(this@MainActivity, R.string.successfully_set, Toast.LENGTH_SHORT).show()
             }
             settingItems.map { settingItem -> settingItem.setup() }.joinAll()
             setupSettingItemsDone = true

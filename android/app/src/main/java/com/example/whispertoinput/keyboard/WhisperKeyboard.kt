@@ -63,6 +63,9 @@ class WhisperKeyboard {
     // Keyboard Status
     private var keyboardStatus: KeyboardStatus = KeyboardStatus.Idle
 
+    // Lock dimensions to prevent changes (used in floating mode)
+    private var dimensionsLocked: Boolean = false
+
     // Views & Keyboard Layout
     private var keyboardView: ConstraintLayout? = null
     private var buttonMic: ImageButton? = null
@@ -328,7 +331,8 @@ class WhisperKeyboard {
                 labelStatus!!.setText(R.string.whisper_to_input)
                 buttonMic!!.setImageResource(R.drawable.mic_idle)
                 waitingIcon!!.visibility = View.INVISIBLE
-                buttonCancel!!.visibility = View.INVISIBLE
+                buttonCancel!!.visibility = View.VISIBLE
+                buttonCancel!!.isEnabled = false  // Disable but keep visible to maintain layout
                 buttonRetry!!.visibility = if (shouldShowRetry()) View.VISIBLE else View.INVISIBLE
                 micRippleContainer!!.visibility = View.GONE
                 keyboardView!!.keepScreenOn = false
@@ -339,6 +343,7 @@ class WhisperKeyboard {
                 buttonMic!!.setImageResource(R.drawable.mic_pressed)
                 waitingIcon!!.visibility = View.INVISIBLE
                 buttonCancel!!.visibility = View.VISIBLE
+                buttonCancel!!.isEnabled = true
                 buttonRetry!!.visibility = View.INVISIBLE
                 micRippleContainer!!.visibility = View.VISIBLE
                 keyboardView!!.keepScreenOn = true
@@ -349,6 +354,7 @@ class WhisperKeyboard {
                 buttonMic!!.setImageResource(R.drawable.mic_transcribing)
                 waitingIcon!!.visibility = View.VISIBLE
                 buttonCancel!!.visibility = View.VISIBLE
+                buttonCancel!!.isEnabled = true
                 buttonRetry!!.visibility = View.INVISIBLE
                 micRippleContainer!!.visibility = View.GONE
                 keyboardView!!.keepScreenOn = true
@@ -371,8 +377,21 @@ class WhisperKeyboard {
         debugKeyDisplay?.text = displayText.ifEmpty { "Keys..." }
     }
 
+    fun lockDimensions() {
+        dimensionsLocked = true
+    }
+
+    fun unlockDimensions() {
+        dimensionsLocked = false
+    }
+
     fun updateOrientation(isLandscape: Boolean, applyReduction: Boolean = true) {
         val keyboardView = keyboardView ?: return
+
+        // Don't update dimensions if locked (prevents size changes in floating mode)
+        if (dimensionsLocked) {
+            return
+        }
 
         // In landscape mode, reduce height by 25% by adjusting padding and button sizes
         // However, if applyReduction is false (e.g., when using floating mode), keep full portrait size

@@ -52,7 +52,12 @@ class FloatingKeyboardWindow(
 
     @SuppressLint("ClickableViewAccessibility")
     fun show() {
-        if (floatingView != null) return // Already showing
+        if (floatingView != null) {
+            android.util.Log.d("whisper-input", "FloatingKeyboardWindow.show(): Already showing, returning")
+            return // Already showing
+        }
+
+        android.util.Log.d("whisper-input", "FloatingKeyboardWindow.show(): Starting...")
 
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
@@ -104,10 +109,18 @@ class FloatingKeyboardWindow(
         }
 
         // Add to window manager
-        windowManager!!.addView(containerView, params)
+        android.util.Log.d("whisper-input", "FloatingKeyboardWindow.show(): Adding view to window manager with width=$keyboardWidth")
+        try {
+            windowManager!!.addView(containerView, params)
+            android.util.Log.d("whisper-input", "FloatingKeyboardWindow.show(): Successfully added to window manager")
+        } catch (e: Exception) {
+            android.util.Log.e("whisper-input", "FloatingKeyboardWindow.show(): Failed to add view to window manager", e)
+            throw e
+        }
 
         // Store the container as our floating view for later removal
         floatingView = containerView
+        android.util.Log.d("whisper-input", "FloatingKeyboardWindow.show(): Complete!")
     }
 
     private fun isTouchOnButton(view: View, x: Float, y: Float): Boolean {
