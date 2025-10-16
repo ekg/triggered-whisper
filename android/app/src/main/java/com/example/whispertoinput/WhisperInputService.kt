@@ -443,10 +443,17 @@ class WhisperInputService : InputMethodService() {
                 return true
             }
             KeyEvent.KEYCODE_BUTTON_L2 -> {
-                // L2: Send Ctrl+Q P (tmux previous window)
-                Log.d("whisper-input", "L2 pressed, sending Ctrl+Q P")
-                whisperKeyboard.displayKeyEvent(keyCode, "◀️ PREV")
-                sendTmuxSequence('p')
+                if (isR1ModPressed) {
+                    // R1+L2: Send Ctrl+Q C (tmux new window)
+                    Log.d("whisper-input", "R1+L2 pressed, creating new tmux window")
+                    whisperKeyboard.displayKeyEvent(keyCode, "🪟 NEW WIN")
+                    sendTmuxSequence('c')
+                } else {
+                    // L2: Send Ctrl+Q P (tmux previous window)
+                    Log.d("whisper-input", "L2 pressed, sending Ctrl+Q P")
+                    whisperKeyboard.displayKeyEvent(keyCode, "◀️ PREV")
+                    sendTmuxSequence('p')
+                }
                 return true
             }
             KeyEvent.KEYCODE_BUTTON_R2 -> {
