@@ -59,6 +59,8 @@ class WhisperKeyboard {
     private var onEnter: () -> Unit = { }
     private var onSpaceBar: () -> Unit = { }
     private var shouldShowRetry: () -> Boolean = { false }
+    private var onSendControlChar: (Char) -> Unit = { }
+    private var onSendSystemKey: (Int) -> Unit = { }
 
     // Keyboard Status
     private var keyboardStatus: KeyboardStatus = KeyboardStatus.Idle
@@ -84,6 +86,9 @@ class WhisperKeyboard {
     private val debugKeyHistory = mutableListOf<String>()
     private var wpmText: String = "WPM: --"
 
+    // Hotkey Bar
+    private var hotkeyBar: View? = null
+
     fun setup(
         layoutInflater: LayoutInflater,
         shouldOfferImeSwitch: Boolean,
@@ -98,6 +103,8 @@ class WhisperKeyboard {
         onSwitchIme: () -> Unit,
         onOpenSettings: () -> Unit,
         shouldShowRetry: () -> Boolean,
+        onSendControlChar: (Char) -> Unit,
+        onSendSystemKey: (Int) -> Unit,
     ): View {
         // Inflate the keyboard layout & assign views
         keyboardView = layoutInflater.inflate(R.layout.keyboard_view, null) as ConstraintLayout

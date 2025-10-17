@@ -67,6 +67,7 @@ val ADD_TRAILING_SPACE = booleanPreferencesKey("add-trailing-space")
 val POSTPROCESSING = stringPreferencesKey("postprocessing")
 val FLOATING_KEYBOARD_LANDSCAPE = booleanPreferencesKey("floating-keyboard-landscape")
 val ENABLE_NAVIGATION_SERVICE = booleanPreferencesKey("enable-navigation-service")
+val SHOW_HOTKEY_BAR = booleanPreferencesKey("show-hotkey-bar")
 
 class MainActivity : AppCompatActivity() {
     private var setupSettingItemsDone: Boolean = false
@@ -381,6 +382,10 @@ class MainActivity : AppCompatActivity() {
                     getString(R.string.settings_option_no) to false,
                 ), false),
                 SettingDropdown(R.id.spinner_enable_navigation_service, ENABLE_NAVIGATION_SERVICE, hashMapOf(
+                    getString(R.string.settings_option_yes) to true,
+                    getString(R.string.settings_option_no) to false,
+                ), false),
+                SettingDropdown(R.id.spinner_show_hotkey_bar, SHOW_HOTKEY_BAR, hashMapOf(
                     getString(R.string.settings_option_yes) to true,
                     getString(R.string.settings_option_no) to false,
                 ), false),

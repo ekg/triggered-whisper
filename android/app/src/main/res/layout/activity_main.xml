@@ -239,6 +239,20 @@
                 style="@style/SettingsSpinner"
                 android:entries="@array/settings_enable_navigation_service_array" />
 
+            <!-- Show Hotkey Bar -->
+            <TextView
+                android:id="@+id/label_show_hotkey_bar"
+                style="@style/SettingsLabel"
+                android:text="@string/settings_show_hotkey_bar" />
+            <TextView
+                android:id="@+id/description_show_hotkey_bar"
+                style="@style/SettingsDescription"
+                android:text="@string/settings_show_hotkey_bar_desc" />
+            <Spinner
+                android:id="@+id/spinner_show_hotkey_bar"
+                style="@style/SettingsSpinner"
+                android:entries="@array/settings_show_hotkey_bar_array" />
+
             <!-- Joystick Configuration -->
             <TextView
                 style="@style/SettingsLabel"

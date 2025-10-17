@@ -19,20 +19,29 @@
     along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    style="@style/Background"
-    android:id="@+id/keyboard_view"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_alignParentBottom="true"
-    android:layout_gravity="bottom"
-    android:clipToPadding="false"
-    android:paddingTop="2dp"
-    android:paddingBottom="2dp">
+    android:orientation="vertical"
+    style="@style/Background">
 
-    <!-- Compact horizontal layout -->
+    <!-- Hotkey Bar (optional, controlled by settings) -->
+    <include layout="@layout/hotkey_bar" />
+
+    <!-- Main Keyboard Row -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/keyboard_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_gravity="bottom"
+        android:clipToPadding="false"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp">
+
+        <!-- Compact horizontal layout -->
     <TextView
         android:id="@+id/debug_key_display"
         android:layout_width="100dp"
@@ -231,4 +240,6 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
-</androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</LinearLayout>

@@ -103,5 +103,11 @@
         <item>@string/settings_option_yes</item>
         <item>@string/settings_option_no</item>
     </string-array>
+    <string name="settings_show_hotkey_bar">Show Hotkey Bar</string>
+    <string name="settings_show_hotkey_bar_desc">Show on-screen buttons for all controller hotkey functions when not using a Bluetooth controller.</string>
+    <string-array name="settings_show_hotkey_bar_array">
+        <item>@string/settings_option_yes</item>
+        <item>@string/settings_option_no</item>
+    </string-array>
 
 </resources>
