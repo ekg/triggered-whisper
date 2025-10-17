@@ -27,9 +27,6 @@
     android:orientation="vertical"
     style="@style/Background">
 
-    <!-- Hotkey Bar (optional, controlled by settings) -->
-    <include layout="@layout/hotkey_bar" />
-
     <!-- Main Keyboard Row -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/keyboard_view"
@@ -241,5 +238,8 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
     </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Hotkey Bar (optional, controlled by settings) -->
+    <include layout="@layout/hotkey_bar" />
 
 </LinearLayout>
