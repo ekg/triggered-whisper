@@ -28,6 +28,8 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Button
+import android.widget.LinearLayout
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.math.MathUtils
 import com.example.whispertoinput.R
@@ -69,7 +71,8 @@ class WhisperKeyboard {
     private var dimensionsLocked: Boolean = false
 
     // Views & Keyboard Layout
-    private var keyboardView: ConstraintLayout? = null
+    private var keyboardView: View? = null
+    private var keyboardRow: ConstraintLayout? = null
     private var buttonMic: ImageButton? = null
     private var buttonMicFrame: View? = null
     private var buttonEnter: ImageButton? = null
@@ -106,26 +109,29 @@ class WhisperKeyboard {
         onSendControlChar: (Char) -> Unit,
         onSendSystemKey: (Int) -> Unit,
     ): View {
-        // Inflate the keyboard layout & assign views
-        keyboardView = layoutInflater.inflate(R.layout.keyboard_view, null) as ConstraintLayout
-        buttonMicFrame = keyboardView!!.findViewById(R.id.btn_mic_frame)
-        buttonMic = keyboardView!!.findViewById(R.id.btn_mic) as ImageButton
-        buttonEnter = keyboardView!!.findViewById(R.id.btn_enter) as ImageButton
-        buttonCancel = keyboardView!!.findViewById(R.id.btn_cancel) as ImageButton
-        buttonRetry = keyboardView!!.findViewById(R.id.btn_retry) as ImageButton
-        labelStatus = keyboardView!!.findViewById(R.id.label_status) as TextView
-        buttonSpaceBar = keyboardView!!.findViewById(R.id.btn_space_bar) as ImageButton
-        waitingIcon = keyboardView!!.findViewById(R.id.pb_waiting_icon) as ProgressBar
-        buttonBackspace = keyboardView!!.findViewById(R.id.btn_backspace) as BackspaceButton
-        buttonPreviousIme = keyboardView!!.findViewById(R.id.btn_previous_ime) as ImageButton
-        micRippleContainer = keyboardView!!.findViewById(R.id.mic_ripples) as ConstraintLayout
+        // Inflate the keyboard layout (now a LinearLayout with hotkey bar + main keyboard)
+        keyboardView = layoutInflater.inflate(R.layout.keyboard_view, null)
+        keyboardRow = keyboardView!!.findViewById(R.id.keyboard_view) as ConstraintLayout
+        hotkeyBar = keyboardView!!.findViewById(R.id.hotkey_bar)
+
+        buttonMicFrame = keyboardRow!!.findViewById(R.id.btn_mic_frame)
+        buttonMic = keyboardRow!!.findViewById(R.id.btn_mic) as ImageButton
+        buttonEnter = keyboardRow!!.findViewById(R.id.btn_enter) as ImageButton
+        buttonCancel = keyboardRow!!.findViewById(R.id.btn_cancel) as ImageButton
+        buttonRetry = keyboardRow!!.findViewById(R.id.btn_retry) as ImageButton
+        labelStatus = keyboardRow!!.findViewById(R.id.label_status) as TextView
+        buttonSpaceBar = keyboardRow!!.findViewById(R.id.btn_space_bar) as ImageButton
+        waitingIcon = keyboardRow!!.findViewById(R.id.pb_waiting_icon) as ProgressBar
+        buttonBackspace = keyboardRow!!.findViewById(R.id.btn_backspace) as BackspaceButton
+        buttonPreviousIme = keyboardRow!!.findViewById(R.id.btn_previous_ime) as ImageButton
+        micRippleContainer = keyboardRow!!.findViewById(R.id.mic_ripples) as ConstraintLayout
         micRipples = arrayOf(
-            keyboardView!!.findViewById(R.id.mic_ripple_0) as ImageView,
-            keyboardView!!.findViewById(R.id.mic_ripple_1) as ImageView,
-            keyboardView!!.findViewById(R.id.mic_ripple_2) as ImageView,
-            keyboardView!!.findViewById(R.id.mic_ripple_3) as ImageView
+            keyboardRow!!.findViewById(R.id.mic_ripple_0) as ImageView,
+            keyboardRow!!.findViewById(R.id.mic_ripple_1) as ImageView,
+            keyboardRow!!.findViewById(R.id.mic_ripple_2) as ImageView,
+            keyboardRow!!.findViewById(R.id.mic_ripple_3) as ImageView
         )
-        debugKeyDisplay = keyboardView!!.findViewById(R.id.debug_key_display) as TextView
+        debugKeyDisplay = keyboardRow!!.findViewById(R.id.debug_key_display) as TextView
 
         // Hide buttonPreviousIme if necessary
         if (!shouldOfferImeSwitch) {
@@ -155,6 +161,11 @@ class WhisperKeyboard {
         this.onEnter = onEnter
         this.onSpaceBar = onSpaceBar
         this.shouldShowRetry = shouldShowRetry
+        this.onSendControlChar = onSendControlChar
+        this.onSendSystemKey = onSendSystemKey
+
+        // Setup hotkey bar buttons
+        setupHotkeyBar()
 
         // Resets keyboard upon setup
         reset()
@@ -340,7 +351,7 @@ class WhisperKeyboard {
                 buttonCancel!!.isEnabled = false  // Disable but keep visible to maintain layout
                 buttonRetry!!.visibility = if (shouldShowRetry()) View.VISIBLE else View.INVISIBLE
                 micRippleContainer!!.visibility = View.GONE
-                keyboardView!!.keepScreenOn = false
+                keyboardRow!!.keepScreenOn = false
             }
 
             KeyboardStatus.Recording -> {
@@ -351,7 +362,7 @@ class WhisperKeyboard {
                 buttonCancel!!.isEnabled = true
                 buttonRetry!!.visibility = View.INVISIBLE
                 micRippleContainer!!.visibility = View.VISIBLE
-                keyboardView!!.keepScreenOn = true
+                keyboardRow!!.keepScreenOn = true
             }
 
             KeyboardStatus.Transcribing -> {
@@ -362,7 +373,7 @@ class WhisperKeyboard {
                 buttonCancel!!.isEnabled = true
                 buttonRetry!!.visibility = View.INVISIBLE
                 micRippleContainer!!.visibility = View.GONE
-                keyboardView!!.keepScreenOn = true
+                keyboardRow!!.keepScreenOn = true
             }
         }
 
@@ -406,7 +417,7 @@ class WhisperKeyboard {
     }
 
     fun updateOrientation(isLandscape: Boolean, applyReduction: Boolean = true) {
-        val keyboardView = keyboardView ?: return
+        val keyboardRow = keyboardRow ?: return
 
         // Don't update dimensions if locked (prevents size changes in floating mode)
         if (dimensionsLocked) {
@@ -424,13 +435,13 @@ class WhisperKeyboard {
         }
 
         // Convert dp to pixels
-        val density = keyboardView.context.resources.displayMetrics.density
+        val density = keyboardRow.context.resources.displayMetrics.density
         val paddingPx = (padding * density).toInt()
         val buttonSizePx = (buttonSize * density).toInt()
         val micFrameSizePx = (micFrameSize * density).toInt()
 
         // Update keyboard padding
-        keyboardView.setPadding(0, paddingPx, 0, paddingPx)
+        keyboardRow.setPadding(0, paddingPx, 0, paddingPx)
 
         // Update button sizes
         updateButtonSize(buttonMic, buttonSizePx)
@@ -445,7 +456,7 @@ class WhisperKeyboard {
         updateButtonSize(buttonMicFrame, micFrameSizePx)
 
         // Request layout update
-        keyboardView.requestLayout()
+        keyboardRow.requestLayout()
     }
 
     private fun updateButtonSize(button: View?, sizePx: Int) {
@@ -457,5 +468,60 @@ class WhisperKeyboard {
 
     fun getKeyboardView(): View? {
         return keyboardView
+    }
+
+    private fun setupHotkeyBar() {
+        val hotkeyBar = hotkeyBar ?: return
+
+        // Row 1: Basic Actions
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_listen)?.setOnClickListener { toggleRecording() }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_fzf)?.setOnClickListener { onSendControlChar('r') }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_enter)?.setOnClickListener { onEnter() }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_delete)?.setOnClickListener { onButtonBackspace() }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_space)?.setOnClickListener { onSpaceBar() }
+
+        // Row 2: Tmux Operations
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_new_pane)?.setOnClickListener {
+            // New pane: Ctrl+Q "
+            onSendControlChar('q')
+            // Note: We can't send the literal quote easily, the controller sends it
+        }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_new_window)?.setOnClickListener {
+            // New window: Ctrl+Q C
+            onSendControlChar('q')
+            // Note: Followed by 'c', the controller handles the full sequence
+        }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_prev_window)?.setOnClickListener {
+            // Prev window: Ctrl+Q p
+            onSendControlChar('q')
+        }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_next_window)?.setOnClickListener {
+            // Next window: Ctrl+Q n
+            onSendControlChar('q')
+        }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_ctrl_q)?.setOnClickListener {
+            onSendControlChar('q')
+        }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_ctrl_c)?.setOnClickListener {
+            onSendControlChar('c')
+        }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_ctrl_d)?.setOnClickListener {
+            onSendControlChar('d')
+        }
+
+        // Row 3: Navigation (requires accessibility service)
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_home)?.setOnClickListener {
+            onSendSystemKey(android.view.KeyEvent.KEYCODE_HOME)
+        }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_back)?.setOnClickListener {
+            onSendSystemKey(android.view.KeyEvent.KEYCODE_BACK)
+        }
+        hotkeyBar.findViewById<Button>(R.id.btn_hk_recent)?.setOnClickListener {
+            onSendSystemKey(android.view.KeyEvent.KEYCODE_APP_SWITCH)
+        }
+    }
+
+    fun setHotkeyBarVisibility(visible: Boolean) {
+        hotkeyBar?.visibility = if (visible) View.VISIBLE else View.GONE
     }
 }

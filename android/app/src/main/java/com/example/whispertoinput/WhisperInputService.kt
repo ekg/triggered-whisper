@@ -163,6 +163,8 @@ class WhisperInputService : InputMethodService() {
             { onSwitchIme() },
             { onOpenSettings() },
             { shouldShowRetry() },
+            { char -> sendControlChar(char) },
+            { keyCode -> sendSystemKey(keyCode) },
         )
     }
 
@@ -352,6 +354,12 @@ class WhisperInputService : InputMethodService() {
             whisperKeyboard.updateOrientation(isLandscape, applyReduction = !willUseFloating)
 
             updateFloatingWindow(isLandscape)
+
+            // Check if hotkey bar should be shown
+            val showHotkeyBar = dataStore.data.map { preferences: Preferences ->
+                preferences[SHOW_HOTKEY_BAR] ?: false
+            }.first()
+            whisperKeyboard.setHotkeyBarVisibility(showHotkeyBar)
 
             if (!isFirstTime) return@launch
             isFirstTime = false
