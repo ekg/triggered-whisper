@@ -225,6 +225,20 @@
                 style="@style/SettingsSpinner"
                 android:entries="@array/settings_floating_keyboard_landscape_array" />
 
+            <!-- Enable Controller Navigation -->
+            <TextView
+                android:id="@+id/label_enable_navigation_service"
+                style="@style/SettingsLabel"
+                android:text="@string/settings_enable_navigation_service" />
+            <TextView
+                android:id="@+id/description_enable_navigation_service"
+                style="@style/SettingsDescription"
+                android:text="@string/settings_enable_navigation_service_desc" />
+            <Spinner
+                android:id="@+id/spinner_enable_navigation_service"
+                style="@style/SettingsSpinner"
+                android:entries="@array/settings_enable_navigation_service_array" />
+
             <!-- Joystick Configuration -->
             <TextView
                 style="@style/SettingsLabel"

@@ -66,6 +66,7 @@ val AUTO_SWITCH_BACK = booleanPreferencesKey("auto-switch-back")
 val ADD_TRAILING_SPACE = booleanPreferencesKey("add-trailing-space")
 val POSTPROCESSING = stringPreferencesKey("postprocessing")
 val FLOATING_KEYBOARD_LANDSCAPE = booleanPreferencesKey("floating-keyboard-landscape")
+val ENABLE_NAVIGATION_SERVICE = booleanPreferencesKey("enable-navigation-service")
 
 class MainActivity : AppCompatActivity() {
     private var setupSettingItemsDone: Boolean = false
@@ -158,6 +159,20 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 return
             }
+        }
+    }
+
+    // Check if accessibility service is enabled
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val expectedComponentName = "${packageName}/${NavigationAccessibilityService::class.java.name}"
+        val enabledServicesSetting = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+
+        val colonSplitter = enabledServicesSetting.split(":")
+        return colonSplitter.any { componentString ->
+            componentString.equals(expectedComponentName, ignoreCase = true)
         }
     }
 
@@ -364,6 +379,10 @@ class MainActivity : AppCompatActivity() {
                     getString(R.string.settings_option_yes) to true,
                     getString(R.string.settings_option_no) to false,
                 ), false),
+                SettingDropdown(R.id.spinner_enable_navigation_service, ENABLE_NAVIGATION_SERVICE, hashMapOf(
+                    getString(R.string.settings_option_yes) to true,
+                    getString(R.string.settings_option_no) to false,
+                ), false),
                 SettingStringDropdown(R.id.spinner_postprocessing, POSTPROCESSING, listOf(
                     getString(R.string.settings_option_to_traditional),
                     getString(R.string.settings_option_to_simplified),
@@ -402,6 +421,26 @@ class MainActivity : AppCompatActivity() {
                                 } catch (e: Exception) {
                                     Toast.makeText(this@MainActivity, "Please enable 'Display over other apps' in Android Settings > Apps > Triggered Whisper", Toast.LENGTH_LONG).show()
                                 }
+                            }
+                        }
+                    }
+
+                    // Check if navigation service was enabled and request accessibility permission if needed
+                    val navigationEnabled = dataStore.data.map { preferences ->
+                        preferences[ENABLE_NAVIGATION_SERVICE] ?: false
+                    }.first()
+
+                    if (navigationEnabled && !needsPermission) {
+                        // Check if accessibility service is enabled
+                        if (!isAccessibilityServiceEnabled()) {
+                            needsPermission = true
+                            Toast.makeText(this@MainActivity, "Opening Accessibility settings. Enable 'Controller Navigation'", Toast.LENGTH_LONG).show()
+                            try {
+                                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(this@MainActivity, "Please enable 'Controller Navigation' in Android Settings > Accessibility", Toast.LENGTH_LONG).show()
                             }
                         }
                     }
