@@ -432,10 +432,10 @@ class WhisperInputService : InputMethodService() {
             }
             KeyEvent.KEYCODE_BUTTON_X -> {
                 if (isR1ModPressed) {
-                    // R1+X: Send Ctrl+D (exit/logout)
-                    Log.d("whisper-input", "R1+X pressed, sending Ctrl+D")
-                    whisperKeyboard.displayKeyEvent(keyCode, "🚪 CTRL+D")
-                    sendControlChar('d')
+                    // R1+X: Send Ctrl+C (cancel/interrupt)
+                    Log.d("whisper-input", "R1+X pressed, sending Ctrl+C")
+                    whisperKeyboard.displayKeyEvent(keyCode, "❌ CTRL+C")
+                    sendControlChar('c')
                 } else {
                     // X alone: Delete
                     Log.d("whisper-input", "X pressed, delete")
@@ -445,10 +445,10 @@ class WhisperInputService : InputMethodService() {
             }
             KeyEvent.KEYCODE_BUTTON_Y -> {
                 if (isR1ModPressed) {
-                    // R1+Y: Send Ctrl+C (cancel/interrupt)
-                    Log.d("whisper-input", "R1+Y pressed, sending Ctrl+C")
-                    whisperKeyboard.displayKeyEvent(keyCode, "❌ CTRL+C")
-                    sendControlChar('c')
+                    // R1+Y: Send Ctrl+D (exit/logout)
+                    Log.d("whisper-input", "R1+Y pressed, sending Ctrl+D")
+                    whisperKeyboard.displayKeyEvent(keyCode, "🚪 CTRL+D")
+                    sendControlChar('d')
                 } else {
                     // Y alone: Space
                     Log.d("whisper-input", "Y pressed, space")

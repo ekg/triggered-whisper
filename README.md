@@ -31,8 +31,8 @@ Follow the same installation steps as [Whisper To Input](https://github.com/j3so
 - **R1+L1** = New tmux pane - horizontal split (Ctrl+Q ") - shows "➕ NEW PANE"
 - **R1+L2** = New tmux window (Ctrl+Q C) - shows "🪟 NEW WIN"
 - **R1+A** = Ctrl+Q only (puts tmux in command mode for arrow navigation) - shows "⌨️ CTRL+Q"
-- **R1+X** = Ctrl+D (exit/logout) - shows "🚪 CTRL+D"
-- **R1+Y** = Ctrl+C (cancel/interrupt) - shows "❌ CTRL+C"
+- **R1+X** = Ctrl+C (cancel/interrupt) - shows "❌ CTRL+C"
+- **R1+Y** = Ctrl+D (exit/logout) - shows "🚪 CTRL+D"
 
 ### Trigger Buttons
 - **L2** = Ctrl+Q P (tmux previous window) - shows "◀️ PREV"
