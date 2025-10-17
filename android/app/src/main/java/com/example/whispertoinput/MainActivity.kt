@@ -164,7 +164,8 @@ class MainActivity : AppCompatActivity() {
 
     // Check if accessibility service is enabled
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val expectedComponentName = "${packageName}/${NavigationAccessibilityService::class.java.name}"
+        // Use the manifest namespace, not applicationId
+        val expectedComponentName = "com.example.whispertoinput/${NavigationAccessibilityService::class.java.name}"
         val enabledServicesSetting = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
@@ -434,13 +435,13 @@ class MainActivity : AppCompatActivity() {
                         // Check if accessibility service is enabled
                         if (!isAccessibilityServiceEnabled()) {
                             needsPermission = true
-                            Toast.makeText(this@MainActivity, "Opening Accessibility settings. Enable 'Controller Navigation'", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@MainActivity, "Opening Accessibility settings. Enable 'Triggered Whisper Navigation'", Toast.LENGTH_LONG).show()
                             try {
                                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 startActivity(intent)
                             } catch (e: Exception) {
-                                Toast.makeText(this@MainActivity, "Please enable 'Controller Navigation' in Android Settings > Accessibility", Toast.LENGTH_LONG).show()
+                                Toast.makeText(this@MainActivity, "Please enable 'Triggered Whisper Navigation' in Android Settings > Accessibility", Toast.LENGTH_LONG).show()
                             }
                         }
                     }

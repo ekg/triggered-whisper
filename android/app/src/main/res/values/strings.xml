@@ -98,7 +98,7 @@
     <!-- Navigation Accessibility Service -->
     <string name="navigation_service_description">Allows controller system navigation (Home, Back, Recent Apps) using R1 + D-pad. This service only handles system navigation buttons and does not access any text or app content.</string>
     <string name="settings_enable_navigation_service">Enable Controller Navigation</string>
-    <string name="settings_enable_navigation_service_desc">Enable system navigation (Home, Back, Recent Apps) using R1 + D-pad. Requires accessibility permission - enable in Android Settings > Accessibility > Controller Navigation.</string>
+    <string name="settings_enable_navigation_service_desc">Enable system navigation (Home, Back, Recent Apps) using R1 + D-pad. Requires accessibility permission - enable in Android Settings > Accessibility > Triggered Whisper Navigation.</string>
     <string-array name="settings_enable_navigation_service_array">
         <item>@string/settings_option_yes</item>
         <item>@string/settings_option_no</item>

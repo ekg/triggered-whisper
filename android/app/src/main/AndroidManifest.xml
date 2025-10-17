@@ -50,7 +50,7 @@
         </service>
         <service
             android:name=".NavigationAccessibilityService"
-            android:label="Controller Navigation"
+            android:label="Triggered Whisper Navigation"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">
             <intent-filter>
