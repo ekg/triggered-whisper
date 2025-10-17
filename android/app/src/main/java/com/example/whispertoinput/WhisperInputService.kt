@@ -483,6 +483,33 @@ class WhisperInputService : InputMethodService() {
                 sendTmuxSequence('n')
                 return true
             }
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                if (isR1ModPressed) {
+                    // R1+Up: Home button
+                    Log.d("whisper-input", "R1+Up pressed, sending Home")
+                    whisperKeyboard.displayKeyEvent(keyCode, "🏠 HOME")
+                    sendSystemKey(KeyEvent.KEYCODE_HOME)
+                    return true
+                }
+            }
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (isR1ModPressed) {
+                    // R1+Down: Recent apps / Task switcher
+                    Log.d("whisper-input", "R1+Down pressed, sending Recent Apps")
+                    whisperKeyboard.displayKeyEvent(keyCode, "📱 RECENT")
+                    sendSystemKey(KeyEvent.KEYCODE_APP_SWITCH)
+                    return true
+                }
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (isR1ModPressed) {
+                    // R1+Left: Back button
+                    Log.d("whisper-input", "R1+Left pressed, sending Back")
+                    whisperKeyboard.displayKeyEvent(keyCode, "⬅️ BACK")
+                    sendSystemKey(KeyEvent.KEYCODE_BACK)
+                    return true
+                }
+            }
         }
         return super.onKeyDown(keyCode, event)
     }
@@ -518,5 +545,12 @@ class WhisperInputService : InputMethodService() {
 
         // Send Ctrl+Q followed by the letter (p=previous, n=next, c=create, ")
         inputConnection.commitText(ctrlQ + finalChar, 1)
+    }
+
+    private fun sendSystemKey(keyCode: Int) {
+        // Send system key events (Home, Back, Recent apps, etc.)
+        val inputConnection = currentInputConnection ?: return
+        inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
     }
 }
