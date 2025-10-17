@@ -477,26 +477,26 @@ class WhisperKeyboard {
         val hotkeyBar = hotkeyBar ?: return
 
         // Simplified hotkey bar with just 6 essential tmux buttons
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_new_pane)?.setOnClickListener {
+        hotkeyBar.findViewById<ImageButton>(R.id.btn_hk_new_pane)?.setOnClickListener {
             // New pane: Ctrl+Q "
             onSendTmuxSequence('"')
         }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_new_window)?.setOnClickListener {
+        hotkeyBar.findViewById<ImageButton>(R.id.btn_hk_new_window)?.setOnClickListener {
             // New window: Ctrl+Q c
             onSendTmuxSequence('c')
         }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_prev_window)?.setOnClickListener {
+        hotkeyBar.findViewById<ImageButton>(R.id.btn_hk_prev_window)?.setOnClickListener {
             // Prev window: Ctrl+Q p
             onSendTmuxSequence('p')
         }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_next_window)?.setOnClickListener {
+        hotkeyBar.findViewById<ImageButton>(R.id.btn_hk_next_window)?.setOnClickListener {
             // Next window: Ctrl+Q n
             onSendTmuxSequence('n')
         }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_ctrl_c)?.setOnClickListener {
+        hotkeyBar.findViewById<ImageButton>(R.id.btn_hk_ctrl_c)?.setOnClickListener {
             onSendControlChar('c')
         }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_ctrl_d)?.setOnClickListener {
+        hotkeyBar.findViewById<ImageButton>(R.id.btn_hk_ctrl_d)?.setOnClickListener {
             onSendControlChar('d')
         }
     }
