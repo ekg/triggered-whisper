@@ -165,6 +165,7 @@ class WhisperInputService : InputMethodService() {
             { shouldShowRetry() },
             { char -> sendControlChar(char) },
             { keyCode -> sendSystemKey(keyCode) },
+            { char -> sendTmuxSequence(char) },
         )
     }
 

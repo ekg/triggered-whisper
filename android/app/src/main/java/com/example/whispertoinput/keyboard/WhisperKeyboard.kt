@@ -63,6 +63,7 @@ class WhisperKeyboard {
     private var shouldShowRetry: () -> Boolean = { false }
     private var onSendControlChar: (Char) -> Unit = { }
     private var onSendSystemKey: (Int) -> Unit = { }
+    private var onSendTmuxSequence: (Char) -> Unit = { }
 
     // Keyboard Status
     private var keyboardStatus: KeyboardStatus = KeyboardStatus.Idle
@@ -108,6 +109,7 @@ class WhisperKeyboard {
         shouldShowRetry: () -> Boolean,
         onSendControlChar: (Char) -> Unit,
         onSendSystemKey: (Int) -> Unit,
+        onSendTmuxSequence: (Char) -> Unit,
     ): View {
         // Inflate the keyboard layout (now a LinearLayout with hotkey bar + main keyboard)
         keyboardView = layoutInflater.inflate(R.layout.keyboard_view, null)
@@ -163,6 +165,7 @@ class WhisperKeyboard {
         this.shouldShowRetry = shouldShowRetry
         this.onSendControlChar = onSendControlChar
         this.onSendSystemKey = onSendSystemKey
+        this.onSendTmuxSequence = onSendTmuxSequence
 
         // Setup hotkey bar buttons
         setupHotkeyBar()
@@ -473,51 +476,28 @@ class WhisperKeyboard {
     private fun setupHotkeyBar() {
         val hotkeyBar = hotkeyBar ?: return
 
-        // Row 1: Basic Actions
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_listen)?.setOnClickListener { toggleRecording() }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_fzf)?.setOnClickListener { onSendControlChar('r') }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_enter)?.setOnClickListener { onEnter() }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_delete)?.setOnClickListener { onButtonBackspace() }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_space)?.setOnClickListener { onSpaceBar() }
-
-        // Row 2: Tmux Operations
+        // Simplified hotkey bar with just 6 essential tmux buttons
         hotkeyBar.findViewById<Button>(R.id.btn_hk_new_pane)?.setOnClickListener {
             // New pane: Ctrl+Q "
-            onSendControlChar('q')
-            // Note: We can't send the literal quote easily, the controller sends it
+            onSendTmuxSequence('"')
         }
         hotkeyBar.findViewById<Button>(R.id.btn_hk_new_window)?.setOnClickListener {
-            // New window: Ctrl+Q C
-            onSendControlChar('q')
-            // Note: Followed by 'c', the controller handles the full sequence
+            // New window: Ctrl+Q c
+            onSendTmuxSequence('c')
         }
         hotkeyBar.findViewById<Button>(R.id.btn_hk_prev_window)?.setOnClickListener {
             // Prev window: Ctrl+Q p
-            onSendControlChar('q')
+            onSendTmuxSequence('p')
         }
         hotkeyBar.findViewById<Button>(R.id.btn_hk_next_window)?.setOnClickListener {
             // Next window: Ctrl+Q n
-            onSendControlChar('q')
-        }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_ctrl_q)?.setOnClickListener {
-            onSendControlChar('q')
+            onSendTmuxSequence('n')
         }
         hotkeyBar.findViewById<Button>(R.id.btn_hk_ctrl_c)?.setOnClickListener {
             onSendControlChar('c')
         }
         hotkeyBar.findViewById<Button>(R.id.btn_hk_ctrl_d)?.setOnClickListener {
             onSendControlChar('d')
-        }
-
-        // Row 3: Navigation (requires accessibility service)
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_home)?.setOnClickListener {
-            onSendSystemKey(android.view.KeyEvent.KEYCODE_HOME)
-        }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_back)?.setOnClickListener {
-            onSendSystemKey(android.view.KeyEvent.KEYCODE_BACK)
-        }
-        hotkeyBar.findViewById<Button>(R.id.btn_hk_recent)?.setOnClickListener {
-            onSendSystemKey(android.view.KeyEvent.KEYCODE_APP_SWITCH)
         }
     }
 
