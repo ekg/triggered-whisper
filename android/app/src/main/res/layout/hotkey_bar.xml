@@ -9,7 +9,7 @@
     android:orientation="horizontal"
     android:gravity="center"
     android:background="#80000000"
-    android:padding="8dp"
+    android:padding="4dp"
     android:visibility="gone">
 
     <Button
@@ -20,7 +20,7 @@
         android:layout_weight="1"
         android:text="➕"
         android:textSize="20sp"
-        android:layout_marginEnd="8dp"
+        android:layout_marginEnd="4dp"
         android:minWidth="0dp"
         android:minHeight="0dp" />
 
@@ -32,7 +32,7 @@
         android:layout_weight="1"
         android:text="🪟"
         android:textSize="20sp"
-        android:layout_marginEnd="8dp"
+        android:layout_marginEnd="4dp"
         android:minWidth="0dp"
         android:minHeight="0dp" />
 
@@ -44,7 +44,7 @@
         android:layout_weight="1.5"
         android:text="◀"
         android:textSize="20sp"
-        android:layout_marginEnd="8dp"
+        android:layout_marginEnd="4dp"
         android:minWidth="0dp"
         android:minHeight="0dp" />
 
@@ -56,7 +56,7 @@
         android:layout_weight="1.5"
         android:text="▶"
         android:textSize="20sp"
-        android:layout_marginEnd="8dp"
+        android:layout_marginEnd="4dp"
         android:minWidth="0dp"
         android:minHeight="0dp" />
 
@@ -68,7 +68,7 @@
         android:layout_weight="1"
         android:text="❌"
         android:textSize="20sp"
-        android:layout_marginEnd="8dp"
+        android:layout_marginEnd="4dp"
         android:minWidth="0dp"
         android:minHeight="0dp" />
 
