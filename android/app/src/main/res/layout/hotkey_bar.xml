@@ -19,7 +19,8 @@
         android:layout_height="38dp"
         android:layout_weight="1"
         android:text="➕"
-        android:textSize="20sp"
+        android:textSize="10sp"
+        android:background="#FF505050"
         android:layout_marginEnd="4dp"
         android:minWidth="0dp"
         android:minHeight="0dp" />
@@ -31,7 +32,8 @@
         android:layout_height="38dp"
         android:layout_weight="1"
         android:text="🪟"
-        android:textSize="20sp"
+        android:textSize="10sp"
+        android:background="#FF505050"
         android:layout_marginEnd="4dp"
         android:minWidth="0dp"
         android:minHeight="0dp" />
@@ -43,7 +45,8 @@
         android:layout_height="38dp"
         android:layout_weight="1.5"
         android:text="◀"
-        android:textSize="20sp"
+        android:textSize="10sp"
+        android:background="#FF505050"
         android:layout_marginEnd="4dp"
         android:minWidth="0dp"
         android:minHeight="0dp" />
@@ -55,7 +58,8 @@
         android:layout_height="38dp"
         android:layout_weight="1.5"
         android:text="▶"
-        android:textSize="20sp"
+        android:textSize="10sp"
+        android:background="#FF505050"
         android:layout_marginEnd="4dp"
         android:minWidth="0dp"
         android:minHeight="0dp" />
@@ -67,7 +71,8 @@
         android:layout_height="38dp"
         android:layout_weight="1"
         android:text="❌"
-        android:textSize="20sp"
+        android:textSize="10sp"
+        android:background="#FF505050"
         android:layout_marginEnd="4dp"
         android:minWidth="0dp"
         android:minHeight="0dp" />
@@ -79,7 +84,8 @@
         android:layout_height="38dp"
         android:layout_weight="1"
         android:text="🚪"
-        android:textSize="20sp"
+        android:textSize="10sp"
+        android:background="#FF505050"
         android:minWidth="0dp"
         android:minHeight="0dp" />
 
