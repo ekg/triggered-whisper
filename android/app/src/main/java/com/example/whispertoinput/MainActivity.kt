@@ -32,6 +32,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.widget.AdapterView
 import android.widget.Button
+import android.widget.EditText
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -54,7 +55,13 @@ import kotlinx.coroutines.launch
 private const val MICROPHONE_PERMISSION_REQUEST_CODE = 200
 private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 201
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+val SPEECH_TO_TEXT_BACKEND = stringPreferencesKey("speech-to-text-backend")
+val ENDPOINT = stringPreferencesKey("endpoint")
 val LANGUAGE_CODE = stringPreferencesKey("language-code")
+val API_KEY = stringPreferencesKey("api-key")
+val MODEL = stringPreferencesKey("model")
+val POSTPROCESSING = stringPreferencesKey("postprocessing")
+val ADD_TRAILING_SPACE = booleanPreferencesKey("add-trailing-space")
 val AUTO_SWITCH_BACK = booleanPreferencesKey("auto-switch-back")
 val FLOATING_KEYBOARD_LANDSCAPE = booleanPreferencesKey("floating-keyboard-landscape")
 val ENABLE_NAVIGATION_SERVICE = booleanPreferencesKey("enable-navigation-service")
@@ -230,11 +237,91 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    inner class SettingStringDropdown(
+        private val viewId: Int,
+        private val preferenceKey: Preferences.Key<String>,
+        private val defaultValue: String
+    ): SettingItem() {
+        override fun setup(): Job {
+            return CoroutineScope(Dispatchers.Main).launch {
+                val btnApply: Button = findViewById(R.id.btn_settings_apply)
+                val spinner = findViewById<Spinner>(viewId)
+                spinner.isEnabled = false
+                spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(parent: AdapterView<*>, view: View?, pos: Int, id: Long) {
+                        if (!setupSettingItemsDone) return
+                        isDirty = true
+                        btnApply.isEnabled = true
+                    }
+                    override fun onNothingSelected(parent: AdapterView<*>) { }
+                }
+
+                // Read data. If none, apply default value.
+                val settingValue: String? = readSetting(preferenceKey)
+                val value: String = settingValue ?: defaultValue
+                if (settingValue == null) {
+                    writeSetting(preferenceKey, defaultValue)
+                }
+                val index: Int? = (0 until spinner.adapter.count).firstOrNull {
+                    spinner.adapter.getItem(it) == value
+                }
+                if (index != null) {
+                    spinner.setSelection(index, false)
+                }
+                spinner.isEnabled = true
+            }
+        }
+        override suspend fun apply() {
+            if (!isDirty) return
+            val selectedItem = findViewById<Spinner>(viewId).selectedItem as String
+            writeSetting(preferenceKey, selectedItem)
+            isDirty = false
+        }
+    }
+
+    inner class SettingTextInput(
+        private val viewId: Int,
+        private val preferenceKey: Preferences.Key<String>,
+        private val defaultValue: String
+    ): SettingItem() {
+        override fun setup(): Job {
+            return CoroutineScope(Dispatchers.Main).launch {
+                val btnApply: Button = findViewById(R.id.btn_settings_apply)
+                val editText = findViewById<EditText>(viewId)
+
+                editText.setOnFocusChangeListener { _, hasFocus ->
+                    if (!hasFocus && setupSettingItemsDone) {
+                        isDirty = true
+                        btnApply.isEnabled = true
+                    }
+                }
+
+                // Read data. If none, apply default value.
+                val settingValue: String? = readSetting(preferenceKey)
+                val value: String = settingValue ?: defaultValue
+                if (settingValue == null) {
+                    writeSetting(preferenceKey, defaultValue)
+                }
+                editText.setText(value)
+            }
+        }
+        override suspend fun apply() {
+            val editText = findViewById<EditText>(viewId)
+            val newValue = editText.text.toString()
+            writeSetting(preferenceKey, newValue)
+            isDirty = false
+        }
+    }
+
     private fun setupSettingItems() {
         setupSettingItemsDone = false
         // Add setting items here to apply functions to them
         CoroutineScope(Dispatchers.Main).launch {
             val settingItems = arrayOf(
+                SettingStringDropdown(R.id.spinner_speech_to_text_backend, SPEECH_TO_TEXT_BACKEND,
+                    getString(R.string.settings_option_gboard_voice)),
+                SettingTextInput(R.id.edittext_endpoint, ENDPOINT,
+                    getString(R.string.settings_option_whisper_asr_webservice_default_endpoint)),
                 SettingDropdown(R.id.spinner_auto_switch_back, AUTO_SWITCH_BACK, hashMapOf(
                     getString(R.string.settings_option_yes) to true,
                     getString(R.string.settings_option_no) to false,

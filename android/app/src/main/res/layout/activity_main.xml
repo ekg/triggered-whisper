@@ -85,6 +85,37 @@
             android:minHeight="100dp"
             android:orientation="vertical" >
 
+            <!-- Speech to Text Backend -->
+            <TextView
+                android:id="@+id/label_speech_to_text_backend"
+                style="@style/SettingsLabel"
+                android:text="@string/settings_speech_to_text_backend" />
+            <TextView
+                android:id="@+id/description_speech_to_text_backend"
+                style="@style/SettingsDescription"
+                android:text="@string/settings_speech_to_text_backend_desc" />
+            <Spinner
+                android:id="@+id/spinner_speech_to_text_backend"
+                style="@style/SettingsSpinner"
+                android:entries="@array/settings_speech_to_text_backend_array" />
+
+            <!-- Endpoint (for Whisper backends) -->
+            <TextView
+                android:id="@+id/label_endpoint"
+                style="@style/SettingsLabel"
+                android:text="@string/settings_endpoint" />
+            <TextView
+                android:id="@+id/description_endpoint"
+                style="@style/SettingsDescription"
+                android:text="@string/settings_endpoint_desc" />
+            <EditText
+                android:id="@+id/edittext_endpoint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/settings_endpoint_hint"
+                android:inputType="textUri"
+                android:textSize="14sp" />
+
             <!-- Auto Switch Back -->
             <TextView
                 android:id="@+id/label_auto_switch_back"

@@ -21,11 +21,13 @@ package com.example.whispertoinput
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Path
-import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.util.Log
 import android.view.KeyEvent
@@ -33,16 +35,30 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
+import com.example.whispertoinput.recorder.RecorderManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Accessibility service for system navigation with controller.
  * Handles R1 + D-pad combinations for Home, Back, and Recent Apps.
- * Also handles switching back to our IME after voice input.
+ * Handles L1 for voice input via Gboard or Whisper backends.
  */
 class NavigationAccessibilityService : AccessibilityService() {
 
     // Track R1 modifier key state
     private var isR1ModPressed: Boolean = false
+
+    // Whisper recording state
+    private var recorderManager: RecorderManager? = null
+    private var whisperTranscriber: WhisperTranscriber? = null
+    private var isRecording: Boolean = false
+    private var currentAudioFile: String? = null
 
     companion object {
         private const val TAG = "NavAccessibility"
@@ -56,6 +72,10 @@ class NavigationAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.d(TAG, "NavigationAccessibilityService connected")
+
+        // Initialize Whisper components
+        recorderManager = RecorderManager(this)
+        whisperTranscriber = WhisperTranscriber()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -80,7 +100,25 @@ class NavigationAccessibilityService : AccessibilityService() {
     }
 
     private fun triggerVoiceInput() {
-        Log.d(TAG, "Attempting to trigger voice input via gesture")
+        // Check which backend is configured
+        CoroutineScope(Dispatchers.Main).launch {
+            val backend = dataStore.data.map { preferences ->
+                preferences[SPEECH_TO_TEXT_BACKEND] ?: getString(R.string.settings_option_gboard_voice)
+            }.first()
+
+            Log.d(TAG, "Voice input backend: $backend")
+
+            if (backend == getString(R.string.settings_option_gboard_voice)) {
+                triggerGboardVoiceInput()
+            } else {
+                // Whisper backend - toggle recording
+                toggleWhisperRecording(backend)
+            }
+        }
+    }
+
+    private fun triggerGboardVoiceInput() {
+        Log.d(TAG, "Attempting to trigger Gboard voice input")
 
         // Strategy 1: Find and click the microphone button in the keyboard
         if (findAndClickMicButton()) {
@@ -100,6 +138,144 @@ class NavigationAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Launched voice recognition activity")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch voice input", e)
+        }
+    }
+
+    private fun toggleWhisperRecording(backend: String) {
+        if (isRecording) {
+            // Stop recording and transcribe
+            stopRecordingAndTranscribe(backend)
+        } else {
+            // Start recording
+            startRecording(backend)
+        }
+    }
+
+    private fun startRecording(backend: String) {
+        val recorder = recorderManager ?: return
+
+        // Check permissions
+        if (!recorder.allPermissionsGranted(this)) {
+            Log.e(TAG, "Microphone permission not granted")
+            showToast("Microphone permission required")
+            return
+        }
+
+        // Determine audio format based on backend
+        val useOggFormat = backend == getString(R.string.settings_option_nvidia_nim)
+        val extension = if (useOggFormat) "ogg" else "m4a"
+
+        // Create audio file in cache directory
+        val audioFile = File(cacheDir, "whisper_audio.$extension")
+        currentAudioFile = audioFile.absolutePath
+
+        try {
+            recorder.start(this, currentAudioFile!!, useOggFormat)
+            isRecording = true
+            Log.d(TAG, "Started recording to $currentAudioFile")
+            showToast("Recording...")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start recording", e)
+            showToast("Failed to start recording")
+        }
+    }
+
+    private fun stopRecordingAndTranscribe(backend: String) {
+        val recorder = recorderManager ?: return
+        val transcriber = whisperTranscriber ?: return
+        val audioFile = currentAudioFile ?: return
+
+        try {
+            recorder.stop()
+            isRecording = false
+            Log.d(TAG, "Stopped recording, starting transcription")
+            showToast("Transcribing...")
+
+            // Determine media type based on file extension
+            val mediaType = if (audioFile.endsWith(".ogg")) "audio/ogg" else "audio/mp4"
+
+            transcriber.startAsync(
+                context = this,
+                filename = audioFile,
+                mediaType = mediaType,
+                attachToEnd = "",
+                callback = { transcribedText ->
+                    if (transcribedText != null) {
+                        Log.d(TAG, "Transcription result: $transcribedText")
+                        injectText(transcribedText)
+                    } else {
+                        Log.d(TAG, "Transcription returned null")
+                    }
+                },
+                exceptionCallback = { errorMessage ->
+                    Log.e(TAG, "Transcription error: $errorMessage")
+                    showToast("Error: $errorMessage")
+                }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop recording", e)
+            isRecording = false
+            showToast("Failed to transcribe")
+        }
+    }
+
+    /**
+     * Inject transcribed text into the currently focused input field.
+     */
+    private fun injectText(text: String) {
+        Log.d(TAG, "Injecting text: $text")
+
+        // Try to find the focused input field and set its text
+        val rootNode = rootInActiveWindow
+        if (rootNode != null) {
+            val focusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focusedNode != null) {
+                // Try ACTION_SET_TEXT first (works for editable fields)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    val args = Bundle()
+                    args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                    val result = focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                    if (result) {
+                        Log.d(TAG, "Injected text via ACTION_SET_TEXT")
+                        showToast("Done")
+                        return
+                    }
+                }
+
+                // Try pasting via clipboard
+                Log.d(TAG, "ACTION_SET_TEXT failed, trying clipboard paste")
+            }
+        }
+
+        // Fallback: use clipboard and paste
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("transcription", text)
+            clipboard.setPrimaryClip(clip)
+
+            // Try to paste using accessibility action
+            val focusedNode = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focusedNode != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
+                val pasteResult = focusedNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                if (pasteResult) {
+                    Log.d(TAG, "Injected text via clipboard paste")
+                    showToast("Done")
+                    return
+                }
+            }
+
+            // Last resort: tell user text is in clipboard
+            Log.d(TAG, "Could not auto-paste, text is in clipboard")
+            showToast("Text copied to clipboard")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to inject text", e)
+            showToast("Failed to insert text")
+        }
+    }
+
+    private fun showToast(message: String) {
+        CoroutineScope(Dispatchers.Main).launch {
+            Toast.makeText(this@NavigationAccessibilityService, message, Toast.LENGTH_SHORT).show()
         }
     }
 
