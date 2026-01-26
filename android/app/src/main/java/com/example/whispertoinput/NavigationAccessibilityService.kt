@@ -21,6 +21,8 @@ package com.example.whispertoinput
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.content.Intent
+import android.speech.RecognizerIntent
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
@@ -67,6 +69,30 @@ class NavigationAccessibilityService : AccessibilityService() {
                 Log.d(TAG, "Voice input seems done, switching back to our IME")
                 switchToOurIme()
                 shouldSwitchBackToOurIme = false
+            }
+        }
+    }
+
+    private fun triggerVoiceInput() {
+        try {
+            // Launch Google voice recognition as an activity
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now...")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            Log.d(TAG, "Launched voice recognition activity")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch voice input", e)
+            // Try alternative: trigger voice assist
+            try {
+                val intent = Intent(Intent.ACTION_VOICE_COMMAND).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed to launch voice command", e2)
             }
         }
     }
@@ -123,15 +149,14 @@ class NavigationAccessibilityService : AccessibilityService() {
     private fun handleKeyDown(keyCode: Int): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_BUTTON_L1 -> {
-                // L1 pressed - if we triggered voice input, switch back to our IME
-                if (shouldSwitchBackToOurIme) {
-                    Log.d(TAG, "L1 pressed while in voice mode - switching back to our IME")
-                    switchToOurIme()
-                    shouldSwitchBackToOurIme = false
-                    return true
+                if (isR1ModPressed) {
+                    // R1+L1 is handled elsewhere (tmux new pane)
+                    return false
                 }
-                // Otherwise let it pass through to other handlers
-                return false
+                // L1 alone: Trigger voice input
+                Log.d(TAG, "L1 pressed - triggering voice input")
+                triggerVoiceInput()
+                return true
             }
             KeyEvent.KEYCODE_BUTTON_R1 -> {
                 // R1 pressed - enter modifier mode
