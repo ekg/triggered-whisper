@@ -19,20 +19,18 @@
 
 package com.example.whispertoinput
 
-import android.Manifest
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.util.Log
 import android.view.View
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.IBinder
+import android.speech.RecognizerIntent
 import android.text.TextUtils
 import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
-import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.Preferences
 import com.example.whispertoinput.keyboard.WhisperKeyboard
 import kotlinx.coroutines.CoroutineScope
@@ -47,11 +45,6 @@ class WhisperInputService : InputMethodService() {
     private val whisperKeyboard: WhisperKeyboard = WhisperKeyboard()
     private var isFirstTime: Boolean = true
 
-    // Native speech recognition
-    private var nativeSpeechRecognizer: NativeSpeechRecognizer? = null
-    private var nativePartialText: String = ""
-    private var nativeCommittedLength: Int = 0
-
     // Track button states for modifier key detection
     private var isR1ModPressed: Boolean = false
 
@@ -59,46 +52,6 @@ class WhisperInputService : InputMethodService() {
     private var floatingWindow: FloatingKeyboardWindow? = null
     private var useFloatingKeyboard: Boolean = false
     private var isCurrentlyFloating: Boolean = false
-
-    // Recording time tracking for WPM calculation
-    private var recordingStartTime: Long = 0
-
-    private fun transcriptionCallback(text: String?) {
-        if (!text.isNullOrEmpty()) {
-            currentInputConnection?.commitText(text, 1)
-
-            // Calculate WPM (words per minute)
-            val recordingDurationMs = System.currentTimeMillis() - recordingStartTime
-            val recordingDurationMin = recordingDurationMs / 60000.0
-            val wordCount = text.trim().split("\\s+".toRegex()).size
-            val wpm = if (recordingDurationMin > 0) {
-                (wordCount / recordingDurationMin).toInt()
-            } else {
-                0
-            }
-
-            // Display WPM and word count
-            whisperKeyboard.displayWPM(wpm, wordCount, recordingDurationMs)
-
-            // Check if auto-switch-back is enabled and switch if so
-            CoroutineScope(Dispatchers.Main).launch {
-                val autoSwitchBack = dataStore.data.map { preferences: Preferences ->
-                    preferences[AUTO_SWITCH_BACK] ?: false
-                }.first()
-                if (autoSwitchBack) {
-                    onSwitchIme()
-                }
-            }
-        }
-        whisperKeyboard.reset()
-    }
-
-    private fun hasRecordAudioPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-    }
 
     override fun onCreateInputView(): View {
         // Should offer ime switch?
@@ -207,105 +160,33 @@ class WhisperInputService : InputMethodService() {
         }
     }
 
-    private fun onStartRecording() {
-        // Check audio permission
-        if (!hasRecordAudioPermission()) {
-            // Launch app MainActivity (for permission setup)
-            launchMainActivity()
-            whisperKeyboard.reset()
-            return
-        }
-
-        // Track recording start time for WPM calculation
-        recordingStartTime = System.currentTimeMillis()
-
-        // Reset state for streaming
-        nativePartialText = ""
-        nativeCommittedLength = 0
-
-        nativeSpeechRecognizer = NativeSpeechRecognizer(
-            context = this,
-            onPartialResult = { partialText ->
-                onNativePartialResult(partialText)
-            },
-            onFinalResult = { finalText ->
-                onNativeFinalResult(finalText)
-            },
-            onError = { errorMessage ->
-                Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
-                whisperKeyboard.reset()
-            },
-            onRmsChanged = { amplitude ->
-                whisperKeyboard.updateMicrophoneAmplitude(amplitude.toInt())
+    private fun launchVoiceInput() {
+        // Launch Google's voice recognition UI
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now...")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-        )
-        nativeSpeechRecognizer?.start()
+            startActivity(intent)
+            whisperKeyboard.reset()
+        } catch (e: Exception) {
+            Log.e("whisper-input", "Failed to launch voice input", e)
+            Toast.makeText(this, "Voice input not available", Toast.LENGTH_SHORT).show()
+            whisperKeyboard.reset()
+        }
     }
 
-    private fun onNativePartialResult(partialText: String) {
-        val inputConnection = currentInputConnection ?: return
-
-        // Delete the previously committed partial text and replace with new
-        if (nativeCommittedLength > 0) {
-            inputConnection.deleteSurroundingText(nativeCommittedLength, 0)
-        }
-
-        // Commit the new partial text
-        inputConnection.commitText(partialText, 1)
-        nativeCommittedLength = partialText.length
-        nativePartialText = partialText
-    }
-
-    private fun onNativeFinalResult(finalText: String) {
-        val inputConnection = currentInputConnection ?: return
-
-        // Delete partial text and commit final result
-        if (nativeCommittedLength > 0) {
-            inputConnection.deleteSurroundingText(nativeCommittedLength, 0)
-        }
-
-        // Commit final text
-        transcriptionCallback(finalText)
-        nativeCommittedLength = 0
-        nativePartialText = ""
-
-        nativeSpeechRecognizer?.destroy()
-        nativeSpeechRecognizer = null
+    private fun onStartRecording() {
+        launchVoiceInput()
     }
 
     private fun onCancelRecording() {
-        nativeSpeechRecognizer?.cancel()
-        nativeSpeechRecognizer?.destroy()
-        nativeSpeechRecognizer = null
-        // Remove any partial text that was committed
-        if (nativeCommittedLength > 0) {
-            currentInputConnection?.deleteSurroundingText(nativeCommittedLength, 0)
-        }
-        nativeCommittedLength = 0
-        nativePartialText = ""
+        whisperKeyboard.reset()
     }
 
     private fun onStopRecording(attachToEnd: String) {
-        // Stop listening - this triggers the final result callback
-        nativeSpeechRecognizer?.stop()
-
-        // If no final result comes (e.g., user didn't speak), handle after a short delay
-        CoroutineScope(Dispatchers.Main).launch {
-            kotlinx.coroutines.delay(500)
-            if (nativeSpeechRecognizer != null) {
-                nativeSpeechRecognizer?.destroy()
-                nativeSpeechRecognizer = null
-                // If there's still partial text committed, use that as the final result
-                if (nativeCommittedLength > 0 && nativePartialText.isNotEmpty()) {
-                    currentInputConnection?.deleteSurroundingText(nativeCommittedLength, 0)
-                    transcriptionCallback(nativePartialText + attachToEnd)
-                } else {
-                    whisperKeyboard.reset()
-                }
-                nativeCommittedLength = 0
-                nativePartialText = ""
-            }
-        }
+        whisperKeyboard.reset()
     }
 
     private fun onDeleteText() {
@@ -391,11 +272,6 @@ class WhisperInputService : InputMethodService() {
     override fun onWindowHidden() {
         super.onWindowHidden()
         whisperKeyboard.reset()
-        nativeSpeechRecognizer?.cancel()
-        nativeSpeechRecognizer?.destroy()
-        nativeSpeechRecognizer = null
-        nativeCommittedLength = 0
-        nativePartialText = ""
         floatingWindow?.hide()
         whisperKeyboard.unlockDimensions()
         isCurrentlyFloating = false
@@ -404,9 +280,6 @@ class WhisperInputService : InputMethodService() {
     override fun onDestroy() {
         super.onDestroy()
         whisperKeyboard.reset()
-        nativeSpeechRecognizer?.cancel()
-        nativeSpeechRecognizer?.destroy()
-        nativeSpeechRecognizer = null
         floatingWindow?.hide()
         whisperKeyboard.unlockDimensions()
         floatingWindow = null
