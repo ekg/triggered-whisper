@@ -52,6 +52,41 @@ class WhisperInputService : InputMethodService() {
     private var useFloatingKeyboard: Boolean = false
     private var isCurrentlyFloating: Boolean = false
 
+    companion object {
+        private const val TAG = "WhisperInputService"
+
+        // Static reference to the active instance for cross-service communication
+        @Volatile
+        private var activeInstance: WhisperInputService? = null
+
+        /**
+         * Commit text through the active WhisperInputService instance.
+         * Returns true if text was successfully committed.
+         * This is called from NavigationAccessibilityService.
+         */
+        fun commitTextFromExternal(text: String): Boolean {
+            val instance = activeInstance ?: run {
+                Log.d(TAG, "No active WhisperInputService instance")
+                return false
+            }
+
+            val inputConnection = instance.currentInputConnection ?: run {
+                Log.d(TAG, "No active input connection")
+                return false
+            }
+
+            Log.d(TAG, "Committing text from external: $text")
+            return inputConnection.commitText(text, 1)
+        }
+
+        /**
+         * Check if WhisperInputService has an active input connection.
+         */
+        fun hasActiveInputConnection(): Boolean {
+            return activeInstance?.currentInputConnection != null
+        }
+    }
+
     override fun onCreateInputView(): View {
         // Should offer ime switch?
         val shouldOfferImeSwitch: Boolean =
@@ -274,6 +309,8 @@ class WhisperInputService : InputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
+        activeInstance = this
+        Log.d(TAG, "WhisperInputService window shown, activeInstance set")
         whisperKeyboard.reset()
 
         // If this is the first time calling onWindowShown, it means this IME is just being switched to.
@@ -302,6 +339,8 @@ class WhisperInputService : InputMethodService() {
 
     override fun onWindowHidden() {
         super.onWindowHidden()
+        activeInstance = null
+        Log.d(TAG, "WhisperInputService window hidden, activeInstance cleared")
         whisperKeyboard.reset()
         floatingWindow?.hide()
         whisperKeyboard.unlockDimensions()
@@ -310,6 +349,8 @@ class WhisperInputService : InputMethodService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        activeInstance = null
+        Log.d(TAG, "WhisperInputService destroyed")
         whisperKeyboard.reset()
         floatingWindow?.hide()
         whisperKeyboard.unlockDimensions()

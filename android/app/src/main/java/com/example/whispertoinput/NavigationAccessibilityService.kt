@@ -60,6 +60,10 @@ class NavigationAccessibilityService : AccessibilityService() {
     private var isRecording: Boolean = false
     private var currentAudioFile: String? = null
 
+    // IME switching state for network-based transcription
+    private var previousImeId: String? = null
+    private var didSwitchImeForRecording: Boolean = false
+
     companion object {
         private const val TAG = "NavAccessibility"
         const val OUR_IME_ID = "com.example.whispertoinput.controller/com.example.whispertoinput.WhisperInputService"
@@ -161,6 +165,10 @@ class NavigationAccessibilityService : AccessibilityService() {
             return
         }
 
+        // For network-based backends, switch to our IME first
+        // This ensures we have InputConnection access for text injection
+        switchToOurImeForRecording()
+
         // Determine audio format based on backend
         val useOggFormat = backend == getString(R.string.settings_option_nvidia_nim)
         val extension = if (useOggFormat) "ogg" else "m4a"
@@ -177,7 +185,82 @@ class NavigationAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start recording", e)
             showToast("Failed to start recording")
+            // If recording failed, switch back immediately
+            switchBackToPreviousIme()
         }
+    }
+
+    /**
+     * Switch to our IME for recording using SoftKeyboardController.switchToInputMethod().
+     * This API is available in Android 11+ (API 30+) for AccessibilityServices.
+     */
+    private fun switchToOurImeForRecording() {
+        val currentIme = android.provider.Settings.Secure.getString(
+            contentResolver,
+            android.provider.Settings.Secure.DEFAULT_INPUT_METHOD
+        )
+        Log.d(TAG, "Current IME: $currentIme")
+
+        // If already using our IME, no need to switch
+        if (currentIme?.contains("whispertoinput") == true) {
+            Log.d(TAG, "Already using our IME, good to go")
+            didSwitchImeForRecording = false
+            previousImeId = null
+            return
+        }
+
+        // Save the current IME so we can switch back
+        previousImeId = currentIme
+        didSwitchImeForRecording = true
+
+        // Use SoftKeyboardController to switch IME (API 30+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val controller = softKeyboardController
+                val success = controller.switchToInputMethod(OUR_IME_ID)
+                Log.d(TAG, "switchToInputMethod result: $success")
+                if (!success) {
+                    Log.e(TAG, "Failed to switch to our IME")
+                    didSwitchImeForRecording = false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error switching IME via SoftKeyboardController", e)
+                didSwitchImeForRecording = false
+            }
+        } else {
+            // Fallback for older Android versions - show IME picker
+            Log.d(TAG, "API < 30, showing IME picker")
+            showToast("Switch to Whisper keyboard")
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showInputMethodPicker()
+        }
+    }
+
+    /**
+     * Switch back to the previous IME after transcription is complete.
+     */
+    private fun switchBackToPreviousIme() {
+        if (!didSwitchImeForRecording || previousImeId == null) {
+            Log.d(TAG, "No IME switch to revert")
+            return
+        }
+
+        Log.d(TAG, "Switching back to previous IME: $previousImeId")
+
+        // Use SoftKeyboardController to switch back (API 30+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val controller = softKeyboardController
+                val success = controller.switchToInputMethod(previousImeId!!)
+                Log.d(TAG, "switchToInputMethod (back) result: $success")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error switching back to previous IME", e)
+            }
+        }
+
+        // Reset state
+        previousImeId = null
+        didSwitchImeForRecording = false
     }
 
     private fun stopRecordingAndTranscribe(backend: String) {
@@ -210,67 +293,183 @@ class NavigationAccessibilityService : AccessibilityService() {
                 exceptionCallback = { errorMessage ->
                     Log.e(TAG, "Transcription error: $errorMessage")
                     showToast("Error: $errorMessage")
+                    switchBackToPreviousIme()
                 }
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to stop recording", e)
             isRecording = false
             showToast("Failed to transcribe")
+            switchBackToPreviousIme()
         }
     }
 
     /**
      * Inject transcribed text into the currently focused input field.
+     * Strategy:
+     * 1. Try ACTION_PASTE on focused node (works for EditText)
+     * 2. Try ACTION_SET_TEXT (for some editable views)
+     * 3. Try InputMethodService commit (for terminal apps)
+     * 4. Fall back to clipboard with manual paste message
      */
     private fun injectText(text: String) {
         Log.d(TAG, "Injecting text: $text")
 
-        // Try to find the focused input field and set its text
-        val rootNode = rootInActiveWindow
-        if (rootNode != null) {
-            val focusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-            if (focusedNode != null) {
-                // Try ACTION_SET_TEXT first (works for editable fields)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    val args = Bundle()
-                    args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-                    val result = focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                    if (result) {
-                        Log.d(TAG, "Injected text via ACTION_SET_TEXT")
+        // First, try to find the focused node
+        val focusedNode = findFocusedEditableNode()
+
+        if (focusedNode != null) {
+            Log.d(TAG, "Found focused node: ${focusedNode.className}")
+
+            // Log all available actions on this node
+            logNodeActions(focusedNode)
+
+            // Strategy 1: Copy to clipboard and paste (for EditText and standard views)
+            try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("transcription", text)
+                clipboard.setPrimaryClip(clip)
+                Log.d(TAG, "Text copied to clipboard")
+
+                if (focusedNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)) {
+                    Log.d(TAG, "ACTION_PASTE succeeded")
+                    showToast("Done")
+                    switchBackToPreviousIme()
+                    return
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Clipboard/paste failed", e)
+            }
+
+            // Strategy 2: Try ACTION_SET_TEXT (for some editable views)
+            try {
+                val args = Bundle()
+                args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                if (focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                    Log.d(TAG, "ACTION_SET_TEXT succeeded")
+                    showToast("Done")
+                    switchBackToPreviousIme()
+                    return
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "ACTION_SET_TEXT failed", e)
+            }
+
+            // Strategy 3: Try custom actions (some apps define their own)
+            for (action in focusedNode.actionList) {
+                if (action.label?.toString()?.lowercase()?.contains("paste") == true ||
+                    action.label?.toString()?.lowercase()?.contains("insert") == true) {
+                    Log.d(TAG, "Trying custom action: ${action.label} (${action.id})")
+                    if (focusedNode.performAction(action.id)) {
+                        Log.d(TAG, "Custom action succeeded")
                         showToast("Done")
+                        switchBackToPreviousIme()
                         return
                     }
                 }
-
-                // Try pasting via clipboard
-                Log.d(TAG, "ACTION_SET_TEXT failed, trying clipboard paste")
             }
         }
 
-        // Fallback: use clipboard and paste
+        // Strategy 4: Use InputMethodService if it's our IME that's active
+        // The WhisperInputService has InputConnection access if it's the current keyboard
+        if (tryCommitViaInputService(text)) {
+            showToast("Done")
+            switchBackToPreviousIme()
+            return
+        }
+
+        // Final fallback: Text is in clipboard, user needs to paste manually
         try {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("transcription", text)
             clipboard.setPrimaryClip(clip)
-
-            // Try to paste using accessibility action
-            val focusedNode = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-            if (focusedNode != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
-                val pasteResult = focusedNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-                if (pasteResult) {
-                    Log.d(TAG, "Injected text via clipboard paste")
-                    showToast("Done")
-                    return
-                }
-            }
-
-            // Last resort: tell user text is in clipboard
-            Log.d(TAG, "Could not auto-paste, text is in clipboard")
-            showToast("Text copied to clipboard")
+            Log.d(TAG, "Text copied to clipboard (final fallback)")
+            showToast("Copied - long press to paste")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to inject text", e)
+            Log.e(TAG, "Failed to copy to clipboard", e)
             showToast("Failed to insert text")
         }
+
+        // Always switch back after injection attempt
+        switchBackToPreviousIme()
+    }
+
+    private fun logNodeActions(node: AccessibilityNodeInfo) {
+        Log.d(TAG, "Node actions available:")
+        for (action in node.actionList) {
+            Log.d(TAG, "  - Action: id=${action.id}, label=${action.label}")
+        }
+    }
+
+    /**
+     * Try to commit text through WhisperInputService if it has an active input connection.
+     */
+    private fun tryCommitViaInputService(text: String): Boolean {
+        // Check if WhisperInputService is the current IME
+        val currentIme = android.provider.Settings.Secure.getString(
+            contentResolver,
+            android.provider.Settings.Secure.DEFAULT_INPUT_METHOD
+        )
+        Log.d(TAG, "Current IME: $currentIme")
+
+        if (currentIme?.contains("whispertoinput") == true) {
+            // Our IME is the default - try to commit through it
+            Log.d(TAG, "WhisperInputService is the default IME, checking for active connection...")
+
+            if (WhisperInputService.hasActiveInputConnection()) {
+                Log.d(TAG, "WhisperInputService has active connection, committing text")
+                if (WhisperInputService.commitTextFromExternal(text)) {
+                    Log.d(TAG, "Successfully committed text via WhisperInputService")
+                    return true
+                } else {
+                    Log.d(TAG, "Failed to commit text via WhisperInputService")
+                }
+            } else {
+                Log.d(TAG, "WhisperInputService has no active input connection")
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Find the currently focused editable node across all windows.
+     */
+    private fun findFocusedEditableNode(): AccessibilityNodeInfo? {
+        // First, try to find focus in the active window
+        val rootNode = rootInActiveWindow
+        if (rootNode != null) {
+            // Look for input-focused node
+            val focusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focusedNode != null) {
+                Log.d(TAG, "Found input-focused node in active window")
+                return focusedNode
+            }
+
+            // Look for accessibility-focused node
+            val accessibilityFocusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+            if (accessibilityFocusedNode != null && accessibilityFocusedNode.isEditable) {
+                Log.d(TAG, "Found accessibility-focused editable node")
+                return accessibilityFocusedNode
+            }
+        }
+
+        // Try all application windows
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            for (window in windows) {
+                if (window.type == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    val windowRoot = window.root ?: continue
+                    val focusedNode = windowRoot.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                    if (focusedNode != null) {
+                        Log.d(TAG, "Found input-focused node in application window")
+                        return focusedNode
+                    }
+                }
+            }
+        }
+
+        Log.d(TAG, "No focused editable node found")
+        return null
     }
 
     private fun showToast(message: String) {

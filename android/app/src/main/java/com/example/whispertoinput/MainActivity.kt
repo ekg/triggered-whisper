@@ -296,10 +296,10 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // Read data. If none, apply default value.
+                // Read data. If none or empty, apply default value.
                 val settingValue: String? = readSetting(preferenceKey)
-                val value: String = settingValue ?: defaultValue
-                if (settingValue == null) {
+                val value: String = if (settingValue.isNullOrEmpty()) defaultValue else settingValue
+                if (settingValue.isNullOrEmpty()) {
                     writeSetting(preferenceKey, defaultValue)
                 }
                 editText.setText(value)
@@ -313,15 +313,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Hidden setting - just sets default value, no UI
+    inner class SettingHidden(
+        private val preferenceKey: Preferences.Key<String>,
+        private val defaultValue: String
+    ): SettingItem() {
+        override fun setup(): Job {
+            return CoroutineScope(Dispatchers.Main).launch {
+                val settingValue: String? = readSetting(preferenceKey)
+                if (settingValue.isNullOrEmpty()) {
+                    writeSetting(preferenceKey, defaultValue)
+                }
+            }
+        }
+        override suspend fun apply() {
+            // No-op for hidden settings
+        }
+    }
+
     private fun setupSettingItems() {
         setupSettingItemsDone = false
         // Add setting items here to apply functions to them
         CoroutineScope(Dispatchers.Main).launch {
             val settingItems = arrayOf(
                 SettingStringDropdown(R.id.spinner_speech_to_text_backend, SPEECH_TO_TEXT_BACKEND,
-                    getString(R.string.settings_option_gboard_voice)),
+                    getString(R.string.settings_option_openai_api)),
                 SettingTextInput(R.id.edittext_endpoint, ENDPOINT,
-                    getString(R.string.settings_option_whisper_asr_webservice_default_endpoint)),
+                    getString(R.string.settings_option_openai_api_default_endpoint)),
+                SettingTextInput(R.id.edittext_api_key, API_KEY, ""),
+                // Set default model for OpenAI (gpt-4o-transcribe)
+                SettingHidden(MODEL, "gpt-4o-transcribe"),
                 SettingDropdown(R.id.spinner_auto_switch_back, AUTO_SWITCH_BACK, hashMapOf(
                     getString(R.string.settings_option_yes) to true,
                     getString(R.string.settings_option_no) to false,
