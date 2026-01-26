@@ -178,6 +178,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Update visibility of backend-specific settings
+    private fun updateBackendSettingsVisibility(backend: String) {
+        val isNative = backend == getString(R.string.settings_option_android_native)
+        val visibility = if (isNative) View.GONE else View.VISIBLE
+
+        // Hide/show Endpoint section
+        findViewById<TextView>(R.id.label_endpoint)?.visibility = visibility
+        findViewById<TextView>(R.id.description_endpoint)?.visibility = visibility
+        findViewById<EditText>(R.id.field_endpoint)?.visibility = visibility
+
+        // Hide/show API Key section
+        findViewById<TextView>(R.id.label_api_key)?.visibility = visibility
+        findViewById<TextView>(R.id.description_api_key)?.visibility = visibility
+        findViewById<EditText>(R.id.field_api_key)?.visibility = visibility
+
+        // Hide/show Model section
+        findViewById<TextView>(R.id.label_model)?.visibility = visibility
+        findViewById<TextView>(R.id.description_model)?.visibility = visibility
+        findViewById<EditText>(R.id.field_model)?.visibility = visibility
+    }
+
     // Below are settings related functions
     abstract inner class SettingItem() {
         protected var isDirty: Boolean = false
@@ -296,6 +317,7 @@ class MainActivity : AppCompatActivity() {
                         // Deal with individual spinner
                         if (parent.id == R.id.spinner_speech_to_text_backend) {
                             val selectedItem = parent.getItemAtPosition(pos)
+                            updateBackendSettingsVisibility(selectedItem.toString())
                             if (selectedItem == getString(R.string.settings_option_openai_api)) {
                                 val endpointEditText: EditText = findViewById<EditText>(R.id.field_endpoint)
                                 endpointEditText.setText(getString(R.string.settings_option_openai_api_default_endpoint))
@@ -324,6 +346,7 @@ class MainActivity : AppCompatActivity() {
                                 val languageCodeEditText: EditText = findViewById<EditText>(R.id.field_language_code)
                                 languageCodeEditText.setText(getString(R.string.settings_option_nvidia_nim_default_language))
                             }
+                            // Android Native doesn't need any field updates - they're hidden
                         }
                     }
                     override fun onNothingSelected(parent: AdapterView<*>) { }
@@ -359,7 +382,8 @@ class MainActivity : AppCompatActivity() {
                 SettingStringDropdown(R.id.spinner_speech_to_text_backend, SPEECH_TO_TEXT_BACKEND, listOf(
                     getString(R.string.settings_option_openai_api),
                     getString(R.string.settings_option_whisper_asr_webservice),
-                    getString(R.string.settings_option_nvidia_nim)
+                    getString(R.string.settings_option_nvidia_nim),
+                    getString(R.string.settings_option_android_native)
                 ), getString(R.string.settings_option_openai_api)),
                 SettingText(R.id.field_endpoint, ENDPOINT, getString(R.string.settings_option_openai_api_default_endpoint)),
                 SettingText(R.id.field_language_code, LANGUAGE_CODE, getString(R.string.settings_option_openai_api_default_language)),
@@ -457,6 +481,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             settingItems.map { settingItem -> settingItem.setup() }.joinAll()
+            // Update visibility based on initially selected backend
+            val spinner = findViewById<Spinner>(R.id.spinner_speech_to_text_backend)
+            updateBackendSettingsVisibility(spinner.selectedItem.toString())
             setupSettingItemsDone = true
         }
     }
