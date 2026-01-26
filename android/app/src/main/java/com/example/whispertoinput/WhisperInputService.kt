@@ -26,7 +26,6 @@ import android.util.Log
 import android.view.View
 import android.content.Intent
 import android.os.IBinder
-import android.speech.RecognizerIntent
 import android.text.TextUtils
 import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
@@ -161,20 +160,57 @@ class WhisperInputService : InputMethodService() {
     }
 
     private fun launchVoiceInput() {
-        // Launch Google's voice recognition UI
+        // Try to switch to Google Voice Typing IME
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        val token = window?.window?.attributes?.token
+
+        // Known Google Voice Typing IME IDs
+        val voiceImeIds = listOf(
+            "com.google.android.googlequicksearchbox/com.google.android.voicesearch.ime.VoiceInputMethodService",
+            "com.google.android.tts/com.google.android.apps.speech.tts.googletts.service.GoogleTTSInputMethodService"
+        )
+
         try {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now...")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // Get list of enabled IMEs
+            val enabledImes = imm.enabledInputMethodList
+            Log.d("whisper-input", "Enabled IMEs: ${enabledImes.map { it.id }}")
+
+            // Look for a voice IME
+            for (ime in enabledImes) {
+                val imeId = ime.id
+                Log.d("whisper-input", "Checking IME: $imeId")
+
+                // Check if this is a voice IME
+                if (voiceImeIds.contains(imeId) || imeId.contains("voice", ignoreCase = true)) {
+                    Log.d("whisper-input", "Found voice IME: $imeId, switching...")
+                    if (token != null) {
+                        imm.setInputMethod(token, imeId)
+                        whisperKeyboard.reset()
+                        return
+                    }
+                }
+
+                // Also check subtypes for voice mode
+                val subtypes = imm.getEnabledInputMethodSubtypeList(ime, true)
+                for (subtype in subtypes) {
+                    if (subtype.mode == "voice") {
+                        Log.d("whisper-input", "Found voice subtype in IME: $imeId")
+                        if (token != null) {
+                            imm.setInputMethodAndSubtype(token, imeId, subtype)
+                            whisperKeyboard.reset()
+                            return
+                        }
+                    }
+                }
             }
-            startActivity(intent)
-            whisperKeyboard.reset()
+
+            // If no voice IME found, show message
+            Toast.makeText(this, "No voice input IME found. Enable Google Voice Typing in Settings.", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
-            Log.e("whisper-input", "Failed to launch voice input", e)
-            Toast.makeText(this, "Voice input not available", Toast.LENGTH_SHORT).show()
-            whisperKeyboard.reset()
+            Log.e("whisper-input", "Failed to switch to voice IME", e)
+            Toast.makeText(this, "Could not start voice input: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+        whisperKeyboard.reset()
     }
 
     private fun onStartRecording() {
