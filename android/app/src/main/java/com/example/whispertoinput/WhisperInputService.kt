@@ -19,48 +19,36 @@
 
 package com.example.whispertoinput
 
+import android.Manifest
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.util.Log
 import android.view.View
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.IBinder
 import android.text.TextUtils
 import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.Preferences
 import com.example.whispertoinput.keyboard.WhisperKeyboard
-import com.example.whispertoinput.recorder.RecorderManager
-import com.github.liuyueyi.quick.transfer.ChineseUtils
-import com.github.liuyueyi.quick.transfer.constants.TransType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 
-private const val RECORDED_AUDIO_FILENAME_M4A = "recorded.m4a"
-private const val RECORDED_AUDIO_FILENAME_OGG = "recorded.ogg"
-private const val AUDIO_MEDIA_TYPE_M4A = "audio/mp4"
-private const val AUDIO_MEDIA_TYPE_OGG = "audio/ogg"
 private const val IME_SWITCH_OPTION_AVAILABILITY_API_LEVEL = 28
 
 class WhisperInputService : InputMethodService() {
     private val whisperKeyboard: WhisperKeyboard = WhisperKeyboard()
-    private val whisperTranscriber: WhisperTranscriber = WhisperTranscriber()
-    private var recorderManager: RecorderManager? = null
-    private var recordedAudioFilename: String = ""
-    private var audioMediaType: String = AUDIO_MEDIA_TYPE_M4A
-    private var useOggFormat: Boolean = false
     private var isFirstTime: Boolean = true
 
     // Native speech recognition
     private var nativeSpeechRecognizer: NativeSpeechRecognizer? = null
-    private var useNativeRecognition: Boolean = false
     private var nativePartialText: String = ""
     private var nativeCommittedLength: Int = 0
 
@@ -105,46 +93,14 @@ class WhisperInputService : InputMethodService() {
         whisperKeyboard.reset()
     }
 
-    private fun transcriptionExceptionCallback(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        whisperKeyboard.reset()
-    }
-
-    private suspend fun updateAudioFormat() {
-        val backend = dataStore.data.map { preferences: Preferences ->
-            preferences[SPEECH_TO_TEXT_BACKEND] ?: getString(R.string.settings_option_openai_api)
-        }.first()
-
-        useNativeRecognition = backend == getString(R.string.settings_option_android_native)
-
-        // Native recognition doesn't need audio file setup
-        if (useNativeRecognition) {
-            return
-        }
-
-        useOggFormat = backend == getString(R.string.settings_option_nvidia_nim)
-        if (useOggFormat) {
-            recordedAudioFilename = "${externalCacheDir?.absolutePath}/${RECORDED_AUDIO_FILENAME_OGG}"
-            audioMediaType = AUDIO_MEDIA_TYPE_OGG
-        } else {
-            recordedAudioFilename = "${externalCacheDir?.absolutePath}/${RECORDED_AUDIO_FILENAME_M4A}"
-            audioMediaType = AUDIO_MEDIA_TYPE_M4A
-        }
+    private fun hasRecordAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     override fun onCreateInputView(): View {
-        // Initialize members with regard to this context
-        recorderManager = RecorderManager(this)
-
-        // Preload conversion table
-        ChineseUtils.preLoad(true, TransType.SIMPLE_TO_TAIWAN)
-        ChineseUtils.preLoad(true, TransType.TAIWAN_TO_SIMPLE)
-
-        // Initialize audio format based on backend setting
-        CoroutineScope(Dispatchers.Main).launch {
-            updateAudioFormat()
-        }
-
         // Should offer ime switch?
         val shouldOfferImeSwitch: Boolean =
             if (Build.VERSION.SDK_INT >= IME_SWITCH_OPTION_AVAILABILITY_API_LEVEL) {
@@ -156,11 +112,6 @@ class WhisperInputService : InputMethodService() {
                 inputMethodManager.shouldOfferSwitchingToNextInputMethod(token)
             }
 
-        // Sets up recorder manager
-        recorderManager!!.setOnUpdateMicrophoneAmplitude { amplitude ->
-            onUpdateMicrophoneAmplitude(amplitude)
-        }
-
         // Returns the keyboard after setting it up and inflating its layout
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         return whisperKeyboard.setup(layoutInflater,
@@ -168,14 +119,14 @@ class WhisperInputService : InputMethodService() {
             isLandscape,
             { onStartRecording() },
             { onCancelRecording() },
-            { attachToEnd -> onStartTranscription(attachToEnd) },
-            { onCancelTranscription() },
+            { attachToEnd -> onStopRecording(attachToEnd) },
+            { onCancelRecording() },
             { onDeleteText() },
             { onEnter() },
             { onSpaceBar() },
             { onSwitchIme() },
             { onOpenSettings() },
-            { shouldShowRetry() },
+            { false },  // No retry for native recognition
             { char -> sendControlChar(char) },
             { keyCode -> sendSystemKey(keyCode) },
             { char -> sendTmuxSequence(char) },
@@ -257,9 +208,9 @@ class WhisperInputService : InputMethodService() {
     }
 
     private fun onStartRecording() {
-        // Upon starting recording, check whether audio permission is granted.
-        if (!recorderManager!!.allPermissionsGranted(this)) {
-            // If not, launch app MainActivity (for permission setup).
+        // Check audio permission
+        if (!hasRecordAudioPermission()) {
+            // Launch app MainActivity (for permission setup)
             launchMainActivity()
             whisperKeyboard.reset()
             return
@@ -268,14 +219,6 @@ class WhisperInputService : InputMethodService() {
         // Track recording start time for WPM calculation
         recordingStartTime = System.currentTimeMillis()
 
-        if (useNativeRecognition) {
-            startNativeRecognition()
-        } else {
-            recorderManager!!.start(this, recordedAudioFilename, useOggFormat)
-        }
-    }
-
-    private fun startNativeRecognition() {
         // Reset state for streaming
         nativePartialText = ""
         nativeCommittedLength = 0
@@ -283,11 +226,9 @@ class WhisperInputService : InputMethodService() {
         nativeSpeechRecognizer = NativeSpeechRecognizer(
             context = this,
             onPartialResult = { partialText ->
-                // Stream partial results to input field
                 onNativePartialResult(partialText)
             },
             onFinalResult = { finalText ->
-                // Handle final result
                 onNativeFinalResult(finalText)
             },
             onError = { errorMessage ->
@@ -295,7 +236,6 @@ class WhisperInputService : InputMethodService() {
                 whisperKeyboard.reset()
             },
             onRmsChanged = { amplitude ->
-                // Update mic visualization
                 whisperKeyboard.updateMicrophoneAmplitude(amplitude.toInt())
             }
         )
@@ -324,71 +264,48 @@ class WhisperInputService : InputMethodService() {
             inputConnection.deleteSurroundingText(nativeCommittedLength, 0)
         }
 
-        // Apply postprocessing and commit final text
+        // Commit final text
         transcriptionCallback(finalText)
+        nativeCommittedLength = 0
+        nativePartialText = ""
+
+        nativeSpeechRecognizer?.destroy()
+        nativeSpeechRecognizer = null
+    }
+
+    private fun onCancelRecording() {
+        nativeSpeechRecognizer?.cancel()
+        nativeSpeechRecognizer?.destroy()
+        nativeSpeechRecognizer = null
+        // Remove any partial text that was committed
+        if (nativeCommittedLength > 0) {
+            currentInputConnection?.deleteSurroundingText(nativeCommittedLength, 0)
+        }
         nativeCommittedLength = 0
         nativePartialText = ""
     }
 
-    // when mic amplitude is updated, notify the keyboard
-    // this callback is registered to the recorder manager
-    private fun onUpdateMicrophoneAmplitude(amplitude: Int) {
-        whisperKeyboard.updateMicrophoneAmplitude(amplitude)
-    }
+    private fun onStopRecording(attachToEnd: String) {
+        // Stop listening - this triggers the final result callback
+        nativeSpeechRecognizer?.stop()
 
-    private fun onCancelRecording() {
-        if (useNativeRecognition) {
-            nativeSpeechRecognizer?.cancel()
-            nativeSpeechRecognizer?.destroy()
-            nativeSpeechRecognizer = null
-            // Remove any partial text that was committed
-            if (nativeCommittedLength > 0) {
-                currentInputConnection?.deleteSurroundingText(nativeCommittedLength, 0)
-            }
-            nativeCommittedLength = 0
-            nativePartialText = ""
-        } else {
-            recorderManager!!.stop()
-        }
-    }
-
-    private fun onStartTranscription(attachToEnd: String) {
-        if (useNativeRecognition) {
-            // For native recognition, stopping triggers the final result callback
-            nativeSpeechRecognizer?.stop()
-            // The onFinalResult callback will handle committing the text
-            // If no final result comes (e.g., user didn't speak), reset after a short delay
-            CoroutineScope(Dispatchers.Main).launch {
-                kotlinx.coroutines.delay(500)
-                if (nativeSpeechRecognizer?.isListening() == false) {
-                    nativeSpeechRecognizer?.destroy()
-                    nativeSpeechRecognizer = null
-                    // If there's still partial text committed, that's the final result
-                    if (nativeCommittedLength > 0 && nativePartialText.isNotEmpty()) {
-                        // The partial text is already committed, just call callback for WPM
-                        // Delete and recommit to apply postprocessing
-                        currentInputConnection?.deleteSurroundingText(nativeCommittedLength, 0)
-                        transcriptionCallback(nativePartialText + attachToEnd)
-                    } else {
-                        whisperKeyboard.reset()
-                    }
-                    nativeCommittedLength = 0
-                    nativePartialText = ""
+        // If no final result comes (e.g., user didn't speak), handle after a short delay
+        CoroutineScope(Dispatchers.Main).launch {
+            kotlinx.coroutines.delay(500)
+            if (nativeSpeechRecognizer != null) {
+                nativeSpeechRecognizer?.destroy()
+                nativeSpeechRecognizer = null
+                // If there's still partial text committed, use that as the final result
+                if (nativeCommittedLength > 0 && nativePartialText.isNotEmpty()) {
+                    currentInputConnection?.deleteSurroundingText(nativeCommittedLength, 0)
+                    transcriptionCallback(nativePartialText + attachToEnd)
+                } else {
+                    whisperKeyboard.reset()
                 }
+                nativeCommittedLength = 0
+                nativePartialText = ""
             }
-        } else {
-            recorderManager!!.stop()
-            whisperTranscriber.startAsync(this,
-                recordedAudioFilename,
-                audioMediaType,
-                attachToEnd,
-                { transcriptionCallback(it) },
-                { transcriptionExceptionCallback(it) })
         }
-    }
-
-    private fun onCancelTranscription() {
-        whisperTranscriber.stop()
     }
 
     private fun onDeleteText() {
@@ -429,15 +346,6 @@ class WhisperInputService : InputMethodService() {
         inputConnection.commitText(" ", 1)
     }
 
-    private fun shouldShowRetry(): Boolean {
-        // Native recognition doesn't save audio files, so no retry available
-        if (useNativeRecognition) {
-            return false
-        }
-        val exists = File(recordedAudioFilename).exists()
-        return exists
-    }
-
     // Opens up app MainActivity
     private fun launchMainActivity() {
         val dialogIntent = Intent(this, MainActivity::class.java)
@@ -447,17 +355,11 @@ class WhisperInputService : InputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
-        whisperTranscriber.stop()
         whisperKeyboard.reset()
-        recorderManager!!.stop()
 
         // If this is the first time calling onWindowShown, it means this IME is just being switched to.
         // Automatically starts recording after switching to Whisper Input. (if settings enabled)
-        // Dispatch a coroutine to do this task.
         CoroutineScope(Dispatchers.Main).launch {
-            // Update audio format based on current backend setting
-            updateAudioFormat()
-
             // Check if we should show floating window and update orientation accordingly
             val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             val willUseFloating = isLandscape && dataStore.data.map { preferences: Preferences ->
@@ -488,9 +390,7 @@ class WhisperInputService : InputMethodService() {
 
     override fun onWindowHidden() {
         super.onWindowHidden()
-        whisperTranscriber.stop()
         whisperKeyboard.reset()
-        recorderManager!!.stop()
         nativeSpeechRecognizer?.cancel()
         nativeSpeechRecognizer?.destroy()
         nativeSpeechRecognizer = null
@@ -503,9 +403,7 @@ class WhisperInputService : InputMethodService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        whisperTranscriber.stop()
         whisperKeyboard.reset()
-        recorderManager!!.stop()
         nativeSpeechRecognizer?.cancel()
         nativeSpeechRecognizer?.destroy()
         nativeSpeechRecognizer = null
