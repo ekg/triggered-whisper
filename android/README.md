@@ -103,7 +103,11 @@ The app tries multiple strategies to inject transcribed text:
 
 ## Controller Button Mapping
 
-### Basic Controls
+All controller buttons are now fully configurable through the app settings. Tap "Configure Button Bindings" in the main settings to customize each button's action.
+
+### Default Bindings
+
+#### Basic Controls
 | Button | Action |
 |--------|--------|
 | L1 | Toggle voice input (record/stop) |
@@ -112,23 +116,37 @@ The app tries multiple strategies to inject transcribed text:
 | X | Delete |
 | Y | Space |
 
-### With R1 Modifier (hold R1 + press)
+#### With R1 Modifier (hold R1 + press)
 | Combo | Action |
 |-------|--------|
-| R1+L1 | New tmux pane |
+| R1+L1 | New tmux pane (horizontal) |
 | R1+L2 | New tmux window |
-| R1+A | Ctrl+Q (tmux command mode) |
+| R1+A | Ctrl+A (tmux prefix) |
 | R1+X | Ctrl+C (cancel) |
 | R1+Y | Ctrl+D (exit) |
 | R1+Up | Home |
 | R1+Down | Recent Apps |
 | R1+Left | Back |
 
-### Triggers
+#### Triggers
 | Button | Action |
 |--------|--------|
 | L2 | Previous tmux window |
 | R2 | Next tmux window |
+
+### Available Actions
+
+Actions are grouped into categories:
+
+- **Voice**: Voice Input
+- **Keys**: Enter, Space, Delete, Tab, Escape
+- **Control**: Ctrl+A through Ctrl+Z (all control characters)
+- **Tmux**: New Pane (H/V), New/Next/Previous Window, Next/Previous Pane, Command Mode, Detach, Copy Mode
+- **System**: Home, Back, Recent Apps
+
+### Tmux Prefix Key
+
+The tmux prefix key is configurable (default: Ctrl+A). Change it in the button bindings settings to match your tmux configuration.
 
 ## Setup
 
@@ -162,6 +180,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Version History
 
+- **v0.63**: Configurable button bindings UI with expandable list, configurable tmux prefix key
 - **v0.62**: Auto-switch IME for network-based transcription using SoftKeyboardController API
 - **v0.61**: Text injection via WhisperInputService for terminal apps
 - **v0.58**: Add Whisper backend support alongside Gboard voice typing

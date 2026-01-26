@@ -189,6 +189,22 @@
                 style="@style/SettingsSpinner"
                 android:entries="@array/settings_show_hotkey_bar_array" />
 
+            <!-- Button Bindings -->
+            <TextView
+                style="@style/SettingsLabel"
+                android:layout_marginTop="16dp"
+                android:text="@string/configure_button_bindings" />
+            <TextView
+                style="@style/SettingsDescription"
+                android:text="@string/configure_button_bindings_desc" />
+            <Button
+                android:id="@+id/btn_configure_bindings"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp"
+                android:text="@string/configure_button_bindings" />
+
             <!-- Joystick Configuration -->
             <TextView
                 style="@style/SettingsLabel"

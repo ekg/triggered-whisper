@@ -36,6 +36,9 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
+import com.example.whispertoinput.controller.ActionType
+import com.example.whispertoinput.controller.ButtonBindingsManager
+import com.example.whispertoinput.controller.ButtonKey
 import com.example.whispertoinput.recorder.RecorderManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -64,6 +67,9 @@ class NavigationAccessibilityService : AccessibilityService() {
     private var previousImeId: String? = null
     private var didSwitchImeForRecording: Boolean = false
 
+    // Button bindings manager
+    private lateinit var bindingsManager: ButtonBindingsManager
+
     companion object {
         private const val TAG = "NavAccessibility"
         const val OUR_IME_ID = "com.example.whispertoinput.controller/com.example.whispertoinput.WhisperInputService"
@@ -80,6 +86,13 @@ class NavigationAccessibilityService : AccessibilityService() {
         // Initialize Whisper components
         recorderManager = RecorderManager(this)
         whisperTranscriber = WhisperTranscriber()
+
+        // Initialize button bindings manager and load cache
+        bindingsManager = ButtonBindingsManager(this)
+        CoroutineScope(Dispatchers.IO).launch {
+            bindingsManager.loadCache()
+            Log.d(TAG, "Button bindings cache loaded")
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -660,51 +673,86 @@ class NavigationAccessibilityService : AccessibilityService() {
     }
 
     private fun handleKeyDown(keyCode: Int): Boolean {
-        when (keyCode) {
-            KeyEvent.KEYCODE_BUTTON_L1 -> {
-                if (isR1ModPressed) {
-                    // R1+L1 is handled elsewhere (tmux new pane)
-                    return false
-                }
-                // L1 alone: Trigger voice input
-                Log.d(TAG, "L1 pressed - triggering voice input")
-                triggerVoiceInput()
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_R1 -> {
-                // R1 pressed - enter modifier mode
-                isR1ModPressed = true
-                Log.d(TAG, "R1 modifier pressed")
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_UP -> {
-                if (isR1ModPressed) {
-                    // R1+Up: Home
-                    Log.d(TAG, "R1+Up: Going Home")
-                    performGlobalAction(GLOBAL_ACTION_HOME)
-                    return true
-                }
-            }
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
-                if (isR1ModPressed) {
-                    // R1+Down: Recent Apps
-                    Log.d(TAG, "R1+Down: Opening Recent Apps")
-                    performGlobalAction(GLOBAL_ACTION_RECENTS)
-                    return true
-                }
-            }
-            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (isR1ModPressed) {
-                    // R1+Left: Back
-                    Log.d(TAG, "R1+Left: Going Back")
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                    return true
-                }
-            }
+        // R1 is always the modifier key
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_R1) {
+            isR1ModPressed = true
+            Log.d(TAG, "R1 modifier pressed")
+            return true
         }
 
-        // Let other key events pass through to other apps/services
-        return false
+        // Look up action for this button (with or without R1 modifier)
+        val buttonKey = ButtonKey(keyCode, isR1ModPressed)
+        val action = bindingsManager.getActionSync(buttonKey)
+
+        Log.d(TAG, "Button ${buttonKey.displayName()} -> action $action")
+
+        // If no action configured, let the event pass through
+        if (action == ActionType.NONE) {
+            return false
+        }
+
+        // Execute the action
+        return executeAction(action)
+    }
+
+    /**
+     * Execute a button action from the bindings.
+     * Returns true if the action was handled.
+     */
+    private fun executeAction(action: ActionType): Boolean {
+        return when (action) {
+            ActionType.VOICE_INPUT -> {
+                Log.d(TAG, "Executing VOICE_INPUT")
+                triggerVoiceInput()
+                true
+            }
+
+            // Basic keys - these are handled by WhisperInputService when it's the active IME
+            // The accessibility service doesn't handle them directly
+            ActionType.KEY_ENTER,
+            ActionType.KEY_SPACE,
+            ActionType.KEY_DELETE,
+            ActionType.KEY_TAB,
+            ActionType.KEY_ESCAPE,
+            ActionType.KEY_UP,
+            ActionType.KEY_DOWN,
+            ActionType.KEY_LEFT,
+            ActionType.KEY_RIGHT -> false
+
+            // Control characters - handled by WhisperInputService
+            ActionType.CTRL_A, ActionType.CTRL_B, ActionType.CTRL_C, ActionType.CTRL_D,
+            ActionType.CTRL_E, ActionType.CTRL_F, ActionType.CTRL_G, ActionType.CTRL_H,
+            ActionType.CTRL_I, ActionType.CTRL_J, ActionType.CTRL_K, ActionType.CTRL_L,
+            ActionType.CTRL_M, ActionType.CTRL_N, ActionType.CTRL_O, ActionType.CTRL_P,
+            ActionType.CTRL_Q, ActionType.CTRL_R, ActionType.CTRL_S, ActionType.CTRL_T,
+            ActionType.CTRL_U, ActionType.CTRL_V, ActionType.CTRL_W, ActionType.CTRL_X,
+            ActionType.CTRL_Y, ActionType.CTRL_Z -> false
+
+            // Tmux commands - handled by WhisperInputService
+            ActionType.TMUX_NEW_PANE_H, ActionType.TMUX_NEW_PANE_V, ActionType.TMUX_NEW_WINDOW,
+            ActionType.TMUX_NEXT_WINDOW, ActionType.TMUX_PREV_WINDOW, ActionType.TMUX_NEXT_PANE,
+            ActionType.TMUX_PREV_PANE, ActionType.TMUX_COMMAND, ActionType.TMUX_DETACH,
+            ActionType.TMUX_COPY_MODE -> false
+
+            // System actions - handled by accessibility service
+            ActionType.SYSTEM_HOME -> {
+                Log.d(TAG, "Executing SYSTEM_HOME")
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                true
+            }
+            ActionType.SYSTEM_BACK -> {
+                Log.d(TAG, "Executing SYSTEM_BACK")
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                true
+            }
+            ActionType.SYSTEM_RECENTS -> {
+                Log.d(TAG, "Executing SYSTEM_RECENTS")
+                performGlobalAction(GLOBAL_ACTION_RECENTS)
+                true
+            }
+
+            ActionType.NONE -> false
+        }
     }
 
     private fun handleKeyUp(keyCode: Int): Boolean {

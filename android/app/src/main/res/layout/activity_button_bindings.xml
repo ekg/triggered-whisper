@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        style="@style/SettingsLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/button_bindings_title"
+        android:textSize="24sp"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        style="@style/SettingsDescription"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/button_bindings_desc"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Tmux Prefix Configuration -->
+    <LinearLayout
+        android:id="@+id/tmux_prefix_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/tmux_prefix_label"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/tmux_prefix_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ctrl+A"
+            android:textSize="16sp"
+            android:textColor="@color/dark_gray" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/dark_gray"
+        android:alpha="0.3"
+        android:layout_marginBottom="8dp" />
+
+    <ExpandableListView
+        android:id="@+id/expandable_list_bindings"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="@android:color/transparent"
+        android:dividerHeight="0dp"
+        android:groupIndicator="@null" />
+
+    <Button
+        android:id="@+id/btn_reset_bindings"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="16dp"
+        android:text="@string/reset_bindings" />
+
+</LinearLayout>

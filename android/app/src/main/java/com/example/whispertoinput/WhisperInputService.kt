@@ -31,6 +31,9 @@ import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.datastore.preferences.core.Preferences
+import com.example.whispertoinput.controller.ActionType
+import com.example.whispertoinput.controller.ButtonBindingsManager
+import com.example.whispertoinput.controller.ButtonKey
 import com.example.whispertoinput.keyboard.WhisperKeyboard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +54,9 @@ class WhisperInputService : InputMethodService() {
     private var floatingWindow: FloatingKeyboardWindow? = null
     private var useFloatingKeyboard: Boolean = false
     private var isCurrentlyFloating: Boolean = false
+
+    // Button bindings manager
+    private lateinit var bindingsManager: ButtonBindingsManager
 
     companion object {
         private const val TAG = "WhisperInputService"
@@ -88,6 +94,13 @@ class WhisperInputService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        // Initialize button bindings manager
+        bindingsManager = ButtonBindingsManager(this)
+        CoroutineScope(Dispatchers.IO).launch {
+            bindingsManager.loadCache()
+            Log.d(TAG, "Button bindings cache loaded")
+        }
+
         // Should offer ime switch?
         val shouldOfferImeSwitch: Boolean =
             if (Build.VERSION.SDK_INT >= IME_SWITCH_OPTION_AVAILABILITY_API_LEVEL) {
@@ -367,124 +380,178 @@ class WhisperInputService : InputMethodService() {
         // Display ALL key events in debug panel
         whisperKeyboard.displayKeyEvent(keyCode, keyName)
 
-        // Map controller buttons with new modifier scheme
-        when (keyCode) {
-            KeyEvent.KEYCODE_BUTTON_L1 -> {
-                if (isR1ModPressed) {
-                    // R1+L1: New tmux pane (horizontal split - Ctrl+Q ")
-                    Log.d("whisper-input", "R1+L1 pressed, creating new tmux pane")
-                    whisperKeyboard.displayKeyEvent(keyCode, "➕ NEW PANE")
-                    sendTmuxSequence('"')
-                } else {
-                    // L1 alone: Toggle recording (listen)
-                    Log.d("whisper-input", "L1 pressed, toggling recording")
-                    whisperKeyboard.toggleRecording()
-                }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_R1 -> {
-                // R1: Modifier key
-                isR1ModPressed = true
-                Log.d("whisper-input", "R1 mod key pressed")
-                whisperKeyboard.displayKeyEvent(keyCode, "🔧 MOD")
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_A -> {
-                if (isR1ModPressed) {
-                    // R1+A: Send just Ctrl+Q (tmux command mode, then user can press arrows)
-                    Log.d("whisper-input", "R1+A pressed, sending Ctrl+Q")
-                    whisperKeyboard.displayKeyEvent(keyCode, "⌨️ CTRL+Q")
-                    sendControlChar('q')
-                } else {
-                    // A alone: Ctrl+R (fzf autocomplete)
-                    Log.d("whisper-input", "A pressed, sending Ctrl+R")
-                    whisperKeyboard.displayKeyEvent(keyCode, "🔍 FZF")
-                    sendControlChar('r')
-                }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_X -> {
-                if (isR1ModPressed) {
-                    // R1+X: Send Ctrl+C (cancel/interrupt)
-                    Log.d("whisper-input", "R1+X pressed, sending Ctrl+C")
-                    whisperKeyboard.displayKeyEvent(keyCode, "❌ CTRL+C")
-                    sendControlChar('c')
-                } else {
-                    // X alone: Delete
-                    Log.d("whisper-input", "X pressed, delete")
-                    onDeleteText()
-                }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_Y -> {
-                if (isR1ModPressed) {
-                    // R1+Y: Send Ctrl+D (exit/logout)
-                    Log.d("whisper-input", "R1+Y pressed, sending Ctrl+D")
-                    whisperKeyboard.displayKeyEvent(keyCode, "🚪 CTRL+D")
-                    sendControlChar('d')
-                } else {
-                    // Y alone: Space
-                    Log.d("whisper-input", "Y pressed, space")
-                    onSpaceBar()
-                }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_B -> {
-                // Button B: Trigger enter (stop recording with newline, or send enter)
-                Log.d("whisper-input", "Button B pressed, triggering enter")
-                whisperKeyboard.triggerEnter()
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_L2 -> {
-                if (isR1ModPressed) {
-                    // R1+L2: Send Ctrl+Q C (tmux new window)
-                    Log.d("whisper-input", "R1+L2 pressed, creating new tmux window")
-                    whisperKeyboard.displayKeyEvent(keyCode, "🪟 NEW WIN")
-                    sendTmuxSequence('c')
-                } else {
-                    // L2: Send Ctrl+Q P (tmux previous window)
-                    Log.d("whisper-input", "L2 pressed, sending Ctrl+Q P")
-                    whisperKeyboard.displayKeyEvent(keyCode, "◀️ PREV")
-                    sendTmuxSequence('p')
-                }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_R2 -> {
-                // R2: Send Ctrl+Q N (tmux next window)
-                Log.d("whisper-input", "R2 pressed, sending Ctrl+Q N")
-                whisperKeyboard.displayKeyEvent(keyCode, "▶️ NEXT")
-                sendTmuxSequence('n')
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_UP -> {
-                if (isR1ModPressed) {
-                    // R1+Up: Home button
-                    Log.d("whisper-input", "R1+Up pressed, sending Home")
-                    whisperKeyboard.displayKeyEvent(keyCode, "🏠 HOME")
-                    sendSystemKey(KeyEvent.KEYCODE_HOME)
-                    return true
-                }
-            }
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
-                if (isR1ModPressed) {
-                    // R1+Down: Recent apps / Task switcher
-                    Log.d("whisper-input", "R1+Down pressed, sending Recent Apps")
-                    whisperKeyboard.displayKeyEvent(keyCode, "📱 RECENT")
-                    sendSystemKey(KeyEvent.KEYCODE_APP_SWITCH)
-                    return true
-                }
-            }
-            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (isR1ModPressed) {
-                    // R1+Left: Back button
-                    Log.d("whisper-input", "R1+Left pressed, sending Back")
-                    whisperKeyboard.displayKeyEvent(keyCode, "⬅️ BACK")
-                    sendSystemKey(KeyEvent.KEYCODE_BACK)
-                    return true
-                }
-            }
+        // R1 is always the modifier key
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_R1) {
+            isR1ModPressed = true
+            Log.d("whisper-input", "R1 mod key pressed")
+            whisperKeyboard.displayKeyEvent(keyCode, "MOD")
+            return true
         }
-        return super.onKeyDown(keyCode, event)
+
+        // Look up action for this button (with or without R1 modifier)
+        val buttonKey = ButtonKey(keyCode, isR1ModPressed)
+        val action = bindingsManager.getActionSync(buttonKey)
+
+        Log.d("whisper-input", "Button ${buttonKey.displayName()} -> action $action")
+
+        // If no action configured, pass through to default handler
+        if (action == ActionType.NONE) {
+            return super.onKeyDown(keyCode, event)
+        }
+
+        // Execute the action
+        return executeAction(action)
+    }
+
+    /**
+     * Execute a button action from the bindings.
+     */
+    private fun executeAction(action: ActionType): Boolean {
+        val tmuxPrefix = bindingsManager.getTmuxPrefixSync()
+
+        return when (action) {
+            ActionType.VOICE_INPUT -> {
+                Log.d("whisper-input", "Executing VOICE_INPUT")
+                whisperKeyboard.toggleRecording()
+                true
+            }
+
+            // Basic keys
+            ActionType.KEY_ENTER -> {
+                Log.d("whisper-input", "Executing KEY_ENTER")
+                whisperKeyboard.triggerEnter()
+                true
+            }
+            ActionType.KEY_SPACE -> {
+                Log.d("whisper-input", "Executing KEY_SPACE")
+                onSpaceBar()
+                true
+            }
+            ActionType.KEY_DELETE -> {
+                Log.d("whisper-input", "Executing KEY_DELETE")
+                onDeleteText()
+                true
+            }
+            ActionType.KEY_TAB -> {
+                Log.d("whisper-input", "Executing KEY_TAB")
+                currentInputConnection?.commitText("\t", 1)
+                true
+            }
+            ActionType.KEY_ESCAPE -> {
+                Log.d("whisper-input", "Executing KEY_ESCAPE")
+                currentInputConnection?.commitText("\u001b", 1)  // ESC character
+                true
+            }
+
+            // Arrow keys
+            ActionType.KEY_UP -> {
+                Log.d("whisper-input", "Executing KEY_UP")
+                sendArrowKey(KeyEvent.KEYCODE_DPAD_UP)
+                true
+            }
+            ActionType.KEY_DOWN -> {
+                Log.d("whisper-input", "Executing KEY_DOWN")
+                sendArrowKey(KeyEvent.KEYCODE_DPAD_DOWN)
+                true
+            }
+            ActionType.KEY_LEFT -> {
+                Log.d("whisper-input", "Executing KEY_LEFT")
+                sendArrowKey(KeyEvent.KEYCODE_DPAD_LEFT)
+                true
+            }
+            ActionType.KEY_RIGHT -> {
+                Log.d("whisper-input", "Executing KEY_RIGHT")
+                sendArrowKey(KeyEvent.KEYCODE_DPAD_RIGHT)
+                true
+            }
+
+            // Control characters
+            ActionType.CTRL_A, ActionType.CTRL_B, ActionType.CTRL_C, ActionType.CTRL_D,
+            ActionType.CTRL_E, ActionType.CTRL_F, ActionType.CTRL_G, ActionType.CTRL_H,
+            ActionType.CTRL_I, ActionType.CTRL_J, ActionType.CTRL_K, ActionType.CTRL_L,
+            ActionType.CTRL_M, ActionType.CTRL_N, ActionType.CTRL_O, ActionType.CTRL_P,
+            ActionType.CTRL_Q, ActionType.CTRL_R, ActionType.CTRL_S, ActionType.CTRL_T,
+            ActionType.CTRL_U, ActionType.CTRL_V, ActionType.CTRL_W, ActionType.CTRL_X,
+            ActionType.CTRL_Y, ActionType.CTRL_Z -> {
+                val char = bindingsManager.getControlChar(action)
+                if (char != null) {
+                    Log.d("whisper-input", "Executing control char: Ctrl+$char")
+                    sendControlChar(char)
+                }
+                true
+            }
+
+            // Tmux commands
+            ActionType.TMUX_NEW_PANE_H -> {
+                Log.d("whisper-input", "Executing TMUX_NEW_PANE_H")
+                sendTmuxSequenceWithPrefix('"', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_NEW_PANE_V -> {
+                Log.d("whisper-input", "Executing TMUX_NEW_PANE_V")
+                sendTmuxSequenceWithPrefix('%', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_NEW_WINDOW -> {
+                Log.d("whisper-input", "Executing TMUX_NEW_WINDOW")
+                sendTmuxSequenceWithPrefix('c', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_NEXT_WINDOW -> {
+                Log.d("whisper-input", "Executing TMUX_NEXT_WINDOW")
+                sendTmuxSequenceWithPrefix('n', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_PREV_WINDOW -> {
+                Log.d("whisper-input", "Executing TMUX_PREV_WINDOW")
+                sendTmuxSequenceWithPrefix('p', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_NEXT_PANE -> {
+                Log.d("whisper-input", "Executing TMUX_NEXT_PANE")
+                sendTmuxSequenceWithPrefix('o', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_PREV_PANE -> {
+                Log.d("whisper-input", "Executing TMUX_PREV_PANE")
+                sendTmuxSequenceWithPrefix(';', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_COMMAND -> {
+                Log.d("whisper-input", "Executing TMUX_COMMAND")
+                sendTmuxSequenceWithPrefix(':', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_DETACH -> {
+                Log.d("whisper-input", "Executing TMUX_DETACH")
+                sendTmuxSequenceWithPrefix('d', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_COPY_MODE -> {
+                Log.d("whisper-input", "Executing TMUX_COPY_MODE")
+                sendTmuxSequenceWithPrefix('[', tmuxPrefix)
+                true
+            }
+
+            // System actions - let accessibility service handle these
+            ActionType.SYSTEM_HOME -> {
+                Log.d("whisper-input", "Executing SYSTEM_HOME")
+                sendSystemKey(KeyEvent.KEYCODE_HOME)
+                true
+            }
+            ActionType.SYSTEM_BACK -> {
+                Log.d("whisper-input", "Executing SYSTEM_BACK")
+                sendSystemKey(KeyEvent.KEYCODE_BACK)
+                true
+            }
+            ActionType.SYSTEM_RECENTS -> {
+                Log.d("whisper-input", "Executing SYSTEM_RECENTS")
+                sendSystemKey(KeyEvent.KEYCODE_APP_SWITCH)
+                true
+            }
+
+            ActionType.NONE -> false
+        }
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
@@ -510,18 +577,31 @@ class WhisperInputService : InputMethodService() {
     }
 
     private fun sendTmuxSequence(finalChar: Char) {
+        // Use the configured tmux prefix
+        val prefix = bindingsManager.getTmuxPrefixSync()
+        sendTmuxSequenceWithPrefix(finalChar, prefix)
+    }
+
+    private fun sendTmuxSequenceWithPrefix(finalChar: Char, prefix: Char) {
         val inputConnection = currentInputConnection ?: return
 
-        // Send Ctrl+Q as actual control character (ASCII 17), then the command letter
-        // Ctrl+Q = 0x11 (17 in decimal)
-        val ctrlQ = "\u0011"  // Ctrl+Q control character
+        // Send the prefix as a control character (Ctrl+prefix)
+        // Control characters are ASCII values 1-26 for Ctrl+A through Ctrl+Z
+        val controlCode = (prefix.uppercaseChar() - 'A' + 1).toChar()
 
-        // Send Ctrl+Q followed by the letter (p=previous, n=next, c=create, ")
-        inputConnection.commitText(ctrlQ + finalChar, 1)
+        // Send prefix control character followed by the command letter
+        inputConnection.commitText(controlCode.toString() + finalChar, 1)
     }
 
     private fun sendSystemKey(keyCode: Int) {
         // Send system key events (Home, Back, Recent apps, etc.)
+        val inputConnection = currentInputConnection ?: return
+        inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+    }
+
+    private fun sendArrowKey(keyCode: Int) {
+        // Send arrow key events for cursor navigation
         val inputConnection = currentInputConnection ?: return
         inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
         inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))

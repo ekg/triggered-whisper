@@ -112,4 +112,12 @@
         <item>@string/settings_option_no</item>
     </string-array>
 
+    <!-- Button Bindings -->
+    <string name="button_bindings_title">Controller Button Bindings</string>
+    <string name="button_bindings_desc">Tap a button to change its action.</string>
+    <string name="configure_button_bindings">Configure Button Bindings</string>
+    <string name="configure_button_bindings_desc">Customize what each controller button does.</string>
+    <string name="tmux_prefix_label">Tmux Prefix Key</string>
+    <string name="reset_bindings">Reset to Defaults</string>
+
 </resources>

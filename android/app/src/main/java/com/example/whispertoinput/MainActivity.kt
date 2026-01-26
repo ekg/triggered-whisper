@@ -26,6 +26,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import com.example.whispertoinput.controller.ButtonBindingsActivity
 import android.net.Uri
 import android.provider.*
 import android.view.KeyEvent
@@ -76,6 +77,11 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         setupSettingItems()
         checkPermissions()
+
+        // Button bindings configuration
+        findViewById<Button>(R.id.btn_configure_bindings).setOnClickListener {
+            startActivity(Intent(this, ButtonBindingsActivity::class.java))
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
