@@ -31,6 +31,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.InputMethodManager
 
 /**
@@ -87,13 +88,7 @@ class NavigationAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Strategy 2: Tap at common mic button location in keyboard area
-        if (tapKeyboardMicArea()) {
-            Log.d(TAG, "Tapped keyboard mic area")
-            return
-        }
-
-        // Strategy 3: Fall back to launching voice recognition activity
+        // Strategy 2: Fall back to launching voice recognition activity
         Log.d(TAG, "Falling back to voice recognition intent")
         try {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -109,52 +104,92 @@ class NavigationAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Search the accessibility tree for a microphone/voice button and click it.
+     * Search ALL windows (including IME) for a microphone/voice button and click it.
+     * Uses getWindows() to access the keyboard window which is separate from the app window.
      */
     private fun findAndClickMicButton(): Boolean {
-        val rootNode = rootInActiveWindow ?: return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return false
+        }
 
-        // Common content descriptions for mic buttons in various keyboards
-        val micDescriptions = listOf(
-            "voice", "Voice", "microphone", "Microphone", "mic", "Mic",
-            "Voice typing", "voice typing", "Voice input", "voice input",
-            "Speak", "speak", "dictate", "Dictate"
+        // Get all windows - this includes the IME (keyboard) window
+        val allWindows = windows
+        Log.d(TAG, "Found ${allWindows.size} windows")
+
+        for (window in allWindows) {
+            val windowRoot = window.root ?: continue
+            val windowPkg = windowRoot.packageName?.toString() ?: ""
+            Log.d(TAG, "Window: type=${window.type}, pkg=$windowPkg")
+
+            // Look specifically in the INPUT_METHOD window (type 2)
+            if (window.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+                Log.d(TAG, "Found INPUT_METHOD window from $windowPkg")
+                if (searchAndClickMicInNode(windowRoot)) {
+                    return true
+                }
+            }
+        }
+
+        // Also try the main window in case keyboard is embedded
+        val rootNode = rootInActiveWindow
+        if (rootNode != null) {
+            if (searchAndClickMicInNode(rootNode)) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Recursively search a node tree for mic/voice buttons and click them.
+     */
+    private fun searchAndClickMicInNode(root: AccessibilityNodeInfo): Boolean {
+        // Look specifically for Gboard's voice typing toggle buttons
+        // These have specific content descriptions we can match exactly
+        val exactMatches = listOf(
+            "Use voice typing",      // Start voice typing
+            "Stop voice typing",     // Stop voice typing (toggle off)
+            "Voice typing"           // Generic voice typing button
         )
 
-        for (desc in micDescriptions) {
-            val nodes = rootNode.findAccessibilityNodeInfosByText(desc)
+        // First pass: look for exact matches (preferred)
+        for (exactDesc in exactMatches) {
+            val nodes = root.findAccessibilityNodeInfosByText(exactDesc)
             for (node in nodes) {
                 val nodeDesc = node.contentDescription?.toString() ?: ""
-                val nodeText = node.text?.toString() ?: ""
-                Log.d(TAG, "Found node with desc='$nodeDesc' text='$nodeText' class=${node.className}")
+                Log.d(TAG, "Checking node: desc='$nodeDesc' clickable=${node.isClickable}")
 
-                // Check if this looks like a mic button
-                if (nodeDesc.contains("voice", ignoreCase = true) ||
-                    nodeDesc.contains("mic", ignoreCase = true) ||
-                    nodeDesc.contains("speak", ignoreCase = true) ||
-                    nodeDesc.contains("dictate", ignoreCase = true)) {
+                // Check for exact or close match (case-insensitive)
+                if (nodeDesc.equals(exactDesc, ignoreCase = true) ||
+                    nodeDesc.startsWith(exactDesc, ignoreCase = true)) {
 
                     if (node.isClickable) {
-                        Log.d(TAG, "Clicking mic button: $nodeDesc")
-                        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                        return true
-                    } else {
-                        // Try clicking the parent
-                        val parent = node.parent
-                        if (parent?.isClickable == true) {
-                            Log.d(TAG, "Clicking mic button parent: ${parent.contentDescription}")
-                            parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                            return true
-                        }
-
-                        // Try tapping at the node's location
-                        val rect = Rect()
-                        node.getBoundsInScreen(rect)
-                        if (rect.width() > 0 && rect.height() > 0) {
-                            Log.d(TAG, "Tapping mic button location: ${rect.centerX()}, ${rect.centerY()}")
-                            return tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
-                        }
+                        Log.d(TAG, "Clicking voice typing button: $nodeDesc")
+                        val result = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        Log.d(TAG, "Click result: $result")
+                        if (result) return true
                     }
+                }
+            }
+        }
+
+        // Second pass: look for microphone buttons by class name (VoiceDictationButton)
+        val allNodes = mutableListOf<AccessibilityNodeInfo>()
+        collectAllNodes(root, allNodes)
+
+        for (node in allNodes) {
+            val nodeClass = node.className?.toString() ?: ""
+            val nodeDesc = node.contentDescription?.toString() ?: ""
+
+            if (nodeClass.contains("VoiceDictation", ignoreCase = true) ||
+                nodeClass.contains("VoiceButton", ignoreCase = true)) {
+                Log.d(TAG, "Found voice button by class: $nodeClass desc='$nodeDesc'")
+
+                if (node.isClickable) {
+                    val result = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    Log.d(TAG, "Click result: $result")
+                    if (result) return true
                 }
             }
         }
@@ -163,71 +198,16 @@ class NavigationAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Tap at the typical location of the mic button in Gboard's toolbar.
-     * Gboard usually has a toolbar above the main keys with mic on the right side.
+     * Collect all nodes in the tree into a list.
      */
-    private fun tapKeyboardMicArea(): Boolean {
-        val rootNode = rootInActiveWindow ?: return false
-
-        // Try to find the keyboard window/view
-        val keyboardNode = findKeyboardNode(rootNode)
-        if (keyboardNode != null) {
-            val rect = Rect()
-            keyboardNode.getBoundsInScreen(rect)
-            Log.d(TAG, "Found keyboard bounds: $rect")
-
-            // Gboard's mic is typically in the toolbar area (top of keyboard, right side)
-            // The toolbar is roughly the top 15% of the keyboard, mic is on the right third
-            val micX = rect.right - (rect.width() * 0.1f)  // 10% from right edge
-            val micY = rect.top + (rect.height() * 0.08f)  // 8% from top (in toolbar)
-
-            Log.d(TAG, "Tapping estimated mic location: $micX, $micY")
-            return tapAt(micX, micY)
-        }
-
-        // If we can't find keyboard, try tapping at screen bottom-right area
-        // This is a last resort based on typical keyboard layouts
-        val displayMetrics = resources.displayMetrics
-        val screenWidth = displayMetrics.widthPixels.toFloat()
-        val screenHeight = displayMetrics.heightPixels.toFloat()
-
-        // Estimate: keyboard takes bottom ~40% of screen, mic in top-right of that
-        val micX = screenWidth * 0.9f  // 90% from left
-        val micY = screenHeight * 0.65f  // 65% from top (top of keyboard area)
-
-        Log.d(TAG, "Tapping estimated screen mic location: $micX, $micY")
-        return tapAt(micX, micY)
-    }
-
-    /**
-     * Find the keyboard's root node in the accessibility tree.
-     */
-    private fun findKeyboardNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        // Look for nodes from known keyboard packages
-        val keyboardPackages = listOf(
-            "com.google.android.inputmethod.latin",  // Gboard
-            "com.samsung.android.honeyboard",        // Samsung keyboard
-            "com.swiftkey.swiftkey",                 // SwiftKey
-            "com.touchtype.swiftkey"                 // SwiftKey alternative
-        )
-
-        return findNodeByPackage(root, keyboardPackages)
-    }
-
-    private fun findNodeByPackage(node: AccessibilityNodeInfo, packages: List<String>): AccessibilityNodeInfo? {
-        val pkg = node.packageName?.toString() ?: ""
-        if (packages.any { pkg.contains(it, ignoreCase = true) }) {
-            return node
-        }
-
+    private fun collectAllNodes(node: AccessibilityNodeInfo, list: MutableList<AccessibilityNodeInfo>) {
+        list.add(node)
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            val result = findNodeByPackage(child, packages)
-            if (result != null) return result
+            collectAllNodes(child, list)
         }
-
-        return null
     }
+
 
     /**
      * Perform a tap gesture at the specified screen coordinates.
