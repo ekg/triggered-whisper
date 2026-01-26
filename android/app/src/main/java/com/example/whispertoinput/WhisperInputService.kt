@@ -32,30 +32,16 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.datastore.preferences.core.Preferences
 import com.example.whispertoinput.keyboard.WhisperKeyboard
-import com.example.whispertoinput.recorder.RecorderManager
-import com.github.liuyueyi.quick.transfer.ChineseUtils
-import com.github.liuyueyi.quick.transfer.constants.TransType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 
-private const val RECORDED_AUDIO_FILENAME_M4A = "recorded.m4a"
-private const val RECORDED_AUDIO_FILENAME_OGG = "recorded.ogg"
-private const val AUDIO_MEDIA_TYPE_M4A = "audio/mp4"
-private const val AUDIO_MEDIA_TYPE_OGG = "audio/ogg"
 private const val IME_SWITCH_OPTION_AVAILABILITY_API_LEVEL = 28
 
 class WhisperInputService : InputMethodService() {
     private val whisperKeyboard: WhisperKeyboard = WhisperKeyboard()
-    private val whisperTranscriber: WhisperTranscriber = WhisperTranscriber()
-    private var recorderManager: RecorderManager? = null
-    private var recordedAudioFilename: String = ""
-    private var audioMediaType: String = AUDIO_MEDIA_TYPE_M4A
-    private var useOggFormat: Boolean = false
     private var isFirstTime: Boolean = true
 
     // Track button states for modifier key detection
@@ -66,72 +52,42 @@ class WhisperInputService : InputMethodService() {
     private var useFloatingKeyboard: Boolean = false
     private var isCurrentlyFloating: Boolean = false
 
-    // Recording time tracking for WPM calculation
-    private var recordingStartTime: Long = 0
+    companion object {
+        private const val TAG = "WhisperInputService"
 
-    private fun transcriptionCallback(text: String?) {
-        if (!text.isNullOrEmpty()) {
-            currentInputConnection?.commitText(text, 1)
+        // Static reference to the active instance for cross-service communication
+        @Volatile
+        private var activeInstance: WhisperInputService? = null
 
-            // Calculate WPM (words per minute)
-            val recordingDurationMs = System.currentTimeMillis() - recordingStartTime
-            val recordingDurationMin = recordingDurationMs / 60000.0
-            val wordCount = text.trim().split("\\s+".toRegex()).size
-            val wpm = if (recordingDurationMin > 0) {
-                (wordCount / recordingDurationMin).toInt()
-            } else {
-                0
+        /**
+         * Commit text through the active WhisperInputService instance.
+         * Returns true if text was successfully committed.
+         * This is called from NavigationAccessibilityService.
+         */
+        fun commitTextFromExternal(text: String): Boolean {
+            val instance = activeInstance ?: run {
+                Log.d(TAG, "No active WhisperInputService instance")
+                return false
             }
 
-            // Display WPM and word count
-            whisperKeyboard.displayWPM(wpm, wordCount, recordingDurationMs)
-
-            // Check if auto-switch-back is enabled and switch if so
-            CoroutineScope(Dispatchers.Main).launch {
-                val autoSwitchBack = dataStore.data.map { preferences: Preferences ->
-                    preferences[AUTO_SWITCH_BACK] ?: false
-                }.first()
-                if (autoSwitchBack) {
-                    onSwitchIme()
-                }
+            val inputConnection = instance.currentInputConnection ?: run {
+                Log.d(TAG, "No active input connection")
+                return false
             }
+
+            Log.d(TAG, "Committing text from external: $text")
+            return inputConnection.commitText(text, 1)
         }
-        whisperKeyboard.reset()
-    }
 
-    private fun transcriptionExceptionCallback(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        whisperKeyboard.reset()
-    }
-
-    private suspend fun updateAudioFormat() {
-        val backend = dataStore.data.map { preferences: Preferences ->
-            preferences[SPEECH_TO_TEXT_BACKEND] ?: getString(R.string.settings_option_openai_api)
-        }.first()
-        
-        useOggFormat = backend == getString(R.string.settings_option_nvidia_nim)
-        if (useOggFormat) {
-            recordedAudioFilename = "${externalCacheDir?.absolutePath}/${RECORDED_AUDIO_FILENAME_OGG}"
-            audioMediaType = AUDIO_MEDIA_TYPE_OGG
-        } else {
-            recordedAudioFilename = "${externalCacheDir?.absolutePath}/${RECORDED_AUDIO_FILENAME_M4A}"
-            audioMediaType = AUDIO_MEDIA_TYPE_M4A
+        /**
+         * Check if WhisperInputService has an active input connection.
+         */
+        fun hasActiveInputConnection(): Boolean {
+            return activeInstance?.currentInputConnection != null
         }
     }
 
     override fun onCreateInputView(): View {
-        // Initialize members with regard to this context
-        recorderManager = RecorderManager(this)
-
-        // Preload conversion table
-        ChineseUtils.preLoad(true, TransType.SIMPLE_TO_TAIWAN)
-        ChineseUtils.preLoad(true, TransType.TAIWAN_TO_SIMPLE)
-
-        // Initialize audio format based on backend setting
-        CoroutineScope(Dispatchers.Main).launch {
-            updateAudioFormat()
-        }
-
         // Should offer ime switch?
         val shouldOfferImeSwitch: Boolean =
             if (Build.VERSION.SDK_INT >= IME_SWITCH_OPTION_AVAILABILITY_API_LEVEL) {
@@ -143,11 +99,6 @@ class WhisperInputService : InputMethodService() {
                 inputMethodManager.shouldOfferSwitchingToNextInputMethod(token)
             }
 
-        // Sets up recorder manager
-        recorderManager!!.setOnUpdateMicrophoneAmplitude { amplitude ->
-            onUpdateMicrophoneAmplitude(amplitude)
-        }
-
         // Returns the keyboard after setting it up and inflating its layout
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         return whisperKeyboard.setup(layoutInflater,
@@ -155,14 +106,14 @@ class WhisperInputService : InputMethodService() {
             isLandscape,
             { onStartRecording() },
             { onCancelRecording() },
-            { attachToEnd -> onStartTranscription(attachToEnd) },
-            { onCancelTranscription() },
+            { attachToEnd -> onStopRecording(attachToEnd) },
+            { onCancelRecording() },
             { onDeleteText() },
             { onEnter() },
             { onSpaceBar() },
             { onSwitchIme() },
             { onOpenSettings() },
-            { shouldShowRetry() },
+            { false },  // No retry for native recognition
             { char -> sendControlChar(char) },
             { keyCode -> sendSystemKey(keyCode) },
             { char -> sendTmuxSequence(char) },
@@ -243,43 +194,72 @@ class WhisperInputService : InputMethodService() {
         }
     }
 
-    private fun onStartRecording() {
-        // Upon starting recording, check whether audio permission is granted.
-        if (!recorderManager!!.allPermissionsGranted(this)) {
-            // If not, launch app MainActivity (for permission setup).
-            launchMainActivity()
-            whisperKeyboard.reset()
-            return
+    private fun launchVoiceInput() {
+        // Try to switch to Google Voice Typing IME
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        val token = window?.window?.attributes?.token
+
+        // Known Google Voice Typing IME IDs
+        val voiceImeIds = listOf(
+            "com.google.android.googlequicksearchbox/com.google.android.voicesearch.ime.VoiceInputMethodService",
+            "com.google.android.tts/com.google.android.apps.speech.tts.googletts.service.GoogleTTSInputMethodService"
+        )
+
+        try {
+            // Get list of enabled IMEs
+            val enabledImes = imm.enabledInputMethodList
+            Log.d("whisper-input", "Enabled IMEs: ${enabledImes.map { it.id }}")
+
+            // Look for a voice IME
+            for (ime in enabledImes) {
+                val imeId = ime.id
+                Log.d("whisper-input", "Checking IME: $imeId")
+
+                // Check if this is a voice IME
+                if (voiceImeIds.contains(imeId) || imeId.contains("voice", ignoreCase = true)) {
+                    Log.d("whisper-input", "Found voice IME: $imeId, switching...")
+                    if (token != null) {
+                        NavigationAccessibilityService.shouldSwitchBackToOurIme = true
+                        imm.setInputMethod(token, imeId)
+                        whisperKeyboard.reset()
+                        return
+                    }
+                }
+
+                // Also check subtypes for voice mode
+                val subtypes = imm.getEnabledInputMethodSubtypeList(ime, true)
+                for (subtype in subtypes) {
+                    if (subtype.mode == "voice") {
+                        Log.d("whisper-input", "Found voice subtype in IME: $imeId")
+                        if (token != null) {
+                            NavigationAccessibilityService.shouldSwitchBackToOurIme = true
+                            imm.setInputMethodAndSubtype(token, imeId, subtype)
+                            whisperKeyboard.reset()
+                            return
+                        }
+                    }
+                }
+            }
+
+            // If no voice IME found, show message
+            Toast.makeText(this, "No voice input IME found. Enable Google Voice Typing in Settings.", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Log.e("whisper-input", "Failed to switch to voice IME", e)
+            Toast.makeText(this, "Could not start voice input: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-
-        // Track recording start time for WPM calculation
-        recordingStartTime = System.currentTimeMillis()
-
-        recorderManager!!.start(this, recordedAudioFilename, useOggFormat)
+        whisperKeyboard.reset()
     }
 
-    // when mic amplitude is updated, notify the keyboard
-    // this callback is registered to the recorder manager
-    private fun onUpdateMicrophoneAmplitude(amplitude: Int) {
-        whisperKeyboard.updateMicrophoneAmplitude(amplitude)
+    private fun onStartRecording() {
+        launchVoiceInput()
     }
 
     private fun onCancelRecording() {
-        recorderManager!!.stop()
+        whisperKeyboard.reset()
     }
 
-    private fun onStartTranscription(attachToEnd: String) {
-        recorderManager!!.stop()
-        whisperTranscriber.startAsync(this,
-            recordedAudioFilename,
-            audioMediaType,
-            attachToEnd,
-            { transcriptionCallback(it) },
-            { transcriptionExceptionCallback(it) })
-    }
-
-    private fun onCancelTranscription() {
-        whisperTranscriber.stop()
+    private fun onStopRecording(attachToEnd: String) {
+        whisperKeyboard.reset()
     }
 
     private fun onDeleteText() {
@@ -320,11 +300,6 @@ class WhisperInputService : InputMethodService() {
         inputConnection.commitText(" ", 1)
     }
 
-    private fun shouldShowRetry(): Boolean {
-        val exists = File(recordedAudioFilename).exists()
-        return exists
-    }
-
     // Opens up app MainActivity
     private fun launchMainActivity() {
         val dialogIntent = Intent(this, MainActivity::class.java)
@@ -334,17 +309,13 @@ class WhisperInputService : InputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
-        whisperTranscriber.stop()
+        activeInstance = this
+        Log.d(TAG, "WhisperInputService window shown, activeInstance set")
         whisperKeyboard.reset()
-        recorderManager!!.stop()
 
         // If this is the first time calling onWindowShown, it means this IME is just being switched to.
         // Automatically starts recording after switching to Whisper Input. (if settings enabled)
-        // Dispatch a coroutine to do this task.
         CoroutineScope(Dispatchers.Main).launch {
-            // Update audio format based on current backend setting
-            updateAudioFormat()
-
             // Check if we should show floating window and update orientation accordingly
             val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             val willUseFloating = isLandscape && dataStore.data.map { preferences: Preferences ->
@@ -362,22 +333,15 @@ class WhisperInputService : InputMethodService() {
             }.first()
             whisperKeyboard.setHotkeyBarVisibility(showHotkeyBar)
 
-            if (!isFirstTime) return@launch
             isFirstTime = false
-            val isAutoStartRecording = dataStore.data.map { preferences: Preferences ->
-                preferences[AUTO_RECORDING_START] ?: true
-            }.first()
-            if (isAutoStartRecording) {
-                whisperKeyboard.tryStartRecording()
-            }
         }
     }
 
     override fun onWindowHidden() {
         super.onWindowHidden()
-        whisperTranscriber.stop()
+        activeInstance = null
+        Log.d(TAG, "WhisperInputService window hidden, activeInstance cleared")
         whisperKeyboard.reset()
-        recorderManager!!.stop()
         floatingWindow?.hide()
         whisperKeyboard.unlockDimensions()
         isCurrentlyFloating = false
@@ -385,9 +349,9 @@ class WhisperInputService : InputMethodService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        whisperTranscriber.stop()
+        activeInstance = null
+        Log.d(TAG, "WhisperInputService destroyed")
         whisperKeyboard.reset()
-        recorderManager!!.stop()
         floatingWindow?.hide()
         whisperKeyboard.unlockDimensions()
         floatingWindow = null
