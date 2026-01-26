@@ -2,10 +2,10 @@
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeAllMask"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagRequestFilterKeyEvents"
+    android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
     android:canRequestFilterKeyEvents="true"
-    android:canPerformGestures="false"
-    android:canRetrieveWindowContent="false"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
     android:description="@string/navigation_service_description"
     android:notificationTimeout="0"
     android:settingsActivity="com.example.whispertoinput.MainActivity" />

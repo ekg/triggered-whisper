@@ -20,12 +20,17 @@
 package com.example.whispertoinput
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.Intent
+import android.graphics.Path
+import android.graphics.Rect
+import android.os.Build
 import android.speech.RecognizerIntent
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.inputmethod.InputMethodManager
 
 /**
@@ -74,8 +79,23 @@ class NavigationAccessibilityService : AccessibilityService() {
     }
 
     private fun triggerVoiceInput() {
+        Log.d(TAG, "Attempting to trigger voice input via gesture")
+
+        // Strategy 1: Find and click the microphone button in the keyboard
+        if (findAndClickMicButton()) {
+            Log.d(TAG, "Successfully found and clicked mic button")
+            return
+        }
+
+        // Strategy 2: Tap at common mic button location in keyboard area
+        if (tapKeyboardMicArea()) {
+            Log.d(TAG, "Tapped keyboard mic area")
+            return
+        }
+
+        // Strategy 3: Fall back to launching voice recognition activity
+        Log.d(TAG, "Falling back to voice recognition intent")
         try {
-            // Launch Google voice recognition as an activity
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now...")
@@ -85,16 +105,154 @@ class NavigationAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Launched voice recognition activity")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch voice input", e)
-            // Try alternative: trigger voice assist
-            try {
-                val intent = Intent(Intent.ACTION_VOICE_COMMAND).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+
+    /**
+     * Search the accessibility tree for a microphone/voice button and click it.
+     */
+    private fun findAndClickMicButton(): Boolean {
+        val rootNode = rootInActiveWindow ?: return false
+
+        // Common content descriptions for mic buttons in various keyboards
+        val micDescriptions = listOf(
+            "voice", "Voice", "microphone", "Microphone", "mic", "Mic",
+            "Voice typing", "voice typing", "Voice input", "voice input",
+            "Speak", "speak", "dictate", "Dictate"
+        )
+
+        for (desc in micDescriptions) {
+            val nodes = rootNode.findAccessibilityNodeInfosByText(desc)
+            for (node in nodes) {
+                val nodeDesc = node.contentDescription?.toString() ?: ""
+                val nodeText = node.text?.toString() ?: ""
+                Log.d(TAG, "Found node with desc='$nodeDesc' text='$nodeText' class=${node.className}")
+
+                // Check if this looks like a mic button
+                if (nodeDesc.contains("voice", ignoreCase = true) ||
+                    nodeDesc.contains("mic", ignoreCase = true) ||
+                    nodeDesc.contains("speak", ignoreCase = true) ||
+                    nodeDesc.contains("dictate", ignoreCase = true)) {
+
+                    if (node.isClickable) {
+                        Log.d(TAG, "Clicking mic button: $nodeDesc")
+                        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        return true
+                    } else {
+                        // Try clicking the parent
+                        val parent = node.parent
+                        if (parent?.isClickable == true) {
+                            Log.d(TAG, "Clicking mic button parent: ${parent.contentDescription}")
+                            parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                            return true
+                        }
+
+                        // Try tapping at the node's location
+                        val rect = Rect()
+                        node.getBoundsInScreen(rect)
+                        if (rect.width() > 0 && rect.height() > 0) {
+                            Log.d(TAG, "Tapping mic button location: ${rect.centerX()}, ${rect.centerY()}")
+                            return tapAt(rect.centerX().toFloat(), rect.centerY().toFloat())
+                        }
+                    }
                 }
-                startActivity(intent)
-            } catch (e2: Exception) {
-                Log.e(TAG, "Failed to launch voice command", e2)
             }
         }
+
+        return false
+    }
+
+    /**
+     * Tap at the typical location of the mic button in Gboard's toolbar.
+     * Gboard usually has a toolbar above the main keys with mic on the right side.
+     */
+    private fun tapKeyboardMicArea(): Boolean {
+        val rootNode = rootInActiveWindow ?: return false
+
+        // Try to find the keyboard window/view
+        val keyboardNode = findKeyboardNode(rootNode)
+        if (keyboardNode != null) {
+            val rect = Rect()
+            keyboardNode.getBoundsInScreen(rect)
+            Log.d(TAG, "Found keyboard bounds: $rect")
+
+            // Gboard's mic is typically in the toolbar area (top of keyboard, right side)
+            // The toolbar is roughly the top 15% of the keyboard, mic is on the right third
+            val micX = rect.right - (rect.width() * 0.1f)  // 10% from right edge
+            val micY = rect.top + (rect.height() * 0.08f)  // 8% from top (in toolbar)
+
+            Log.d(TAG, "Tapping estimated mic location: $micX, $micY")
+            return tapAt(micX, micY)
+        }
+
+        // If we can't find keyboard, try tapping at screen bottom-right area
+        // This is a last resort based on typical keyboard layouts
+        val displayMetrics = resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels.toFloat()
+        val screenHeight = displayMetrics.heightPixels.toFloat()
+
+        // Estimate: keyboard takes bottom ~40% of screen, mic in top-right of that
+        val micX = screenWidth * 0.9f  // 90% from left
+        val micY = screenHeight * 0.65f  // 65% from top (top of keyboard area)
+
+        Log.d(TAG, "Tapping estimated screen mic location: $micX, $micY")
+        return tapAt(micX, micY)
+    }
+
+    /**
+     * Find the keyboard's root node in the accessibility tree.
+     */
+    private fun findKeyboardNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        // Look for nodes from known keyboard packages
+        val keyboardPackages = listOf(
+            "com.google.android.inputmethod.latin",  // Gboard
+            "com.samsung.android.honeyboard",        // Samsung keyboard
+            "com.swiftkey.swiftkey",                 // SwiftKey
+            "com.touchtype.swiftkey"                 // SwiftKey alternative
+        )
+
+        return findNodeByPackage(root, keyboardPackages)
+    }
+
+    private fun findNodeByPackage(node: AccessibilityNodeInfo, packages: List<String>): AccessibilityNodeInfo? {
+        val pkg = node.packageName?.toString() ?: ""
+        if (packages.any { pkg.contains(it, ignoreCase = true) }) {
+            return node
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findNodeByPackage(child, packages)
+            if (result != null) return result
+        }
+
+        return null
+    }
+
+    /**
+     * Perform a tap gesture at the specified screen coordinates.
+     */
+    private fun tapAt(x: Float, y: Float): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Log.w(TAG, "dispatchGesture requires API 24+")
+            return false
+        }
+
+        val path = Path()
+        path.moveTo(x, y)
+
+        val gestureBuilder = GestureDescription.Builder()
+        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 50))
+
+        return dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                Log.d(TAG, "Tap gesture completed at $x, $y")
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                Log.w(TAG, "Tap gesture cancelled at $x, $y")
+            }
+        }, null)
     }
 
     private fun switchToOurIme() {
