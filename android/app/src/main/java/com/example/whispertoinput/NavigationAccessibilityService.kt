@@ -20,19 +20,30 @@
 package com.example.whispertoinput
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import android.view.inputmethod.InputMethodManager
 
 /**
  * Accessibility service for system navigation with controller.
  * Handles R1 + D-pad combinations for Home, Back, and Recent Apps.
- * Does NOT handle text input or voice - that's still handled by WhisperInputService.
+ * Also handles switching back to our IME after voice input.
  */
 class NavigationAccessibilityService : AccessibilityService() {
 
     // Track R1 modifier key state
     private var isR1ModPressed: Boolean = false
+
+    companion object {
+        private const val TAG = "NavAccessibility"
+        const val OUR_IME_ID = "com.example.whispertoinput.controller/com.example.whispertoinput.WhisperInputService"
+
+        // Flag to track if we triggered voice input and should switch back
+        @Volatile
+        var shouldSwitchBackToOurIme: Boolean = false
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -40,8 +51,49 @@ class NavigationAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // We don't need to handle accessibility events for navigation
-        // We only care about hardware key events
+        if (event == null) return
+
+        // Watch for window changes that might indicate voice input is done
+        if (shouldSwitchBackToOurIme && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val packageName = event.packageName?.toString() ?: ""
+            Log.d(TAG, "Window state changed: $packageName")
+
+            // If we see a window change that's not voice-related, switch back
+            // Voice input packages: com.google.android.googlequicksearchbox, com.google.android.tts
+            if (!packageName.contains("voice", ignoreCase = true) &&
+                !packageName.contains("speech", ignoreCase = true) &&
+                !packageName.contains("googlequicksearchbox", ignoreCase = true)) {
+
+                Log.d(TAG, "Voice input seems done, switching back to our IME")
+                switchToOurIme()
+                shouldSwitchBackToOurIme = false
+            }
+        }
+    }
+
+    private fun switchToOurIme() {
+        try {
+            // Try to switch IME using shell command (works on some devices)
+            Log.d(TAG, "Attempting to switch to IME: $OUR_IME_ID")
+            val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", "ime set $OUR_IME_ID"))
+            val exitCode = process.waitFor()
+            Log.d(TAG, "ime set command exit code: $exitCode")
+
+            if (exitCode != 0) {
+                // Command failed, try alternative approach - show IME picker
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showInputMethodPicker()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to switch IME", e)
+            // Fallback: show IME picker
+            try {
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showInputMethodPicker()
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed to show IME picker", e2)
+            }
+        }
     }
 
     override fun onInterrupt() {
@@ -70,6 +122,17 @@ class NavigationAccessibilityService : AccessibilityService() {
 
     private fun handleKeyDown(keyCode: Int): Boolean {
         when (keyCode) {
+            KeyEvent.KEYCODE_BUTTON_L1 -> {
+                // L1 pressed - if we triggered voice input, switch back to our IME
+                if (shouldSwitchBackToOurIme) {
+                    Log.d(TAG, "L1 pressed while in voice mode - switching back to our IME")
+                    switchToOurIme()
+                    shouldSwitchBackToOurIme = false
+                    return true
+                }
+                // Otherwise let it pass through to other handlers
+                return false
+            }
             KeyEvent.KEYCODE_BUTTON_R1 -> {
                 // R1 pressed - enter modifier mode
                 isR1ModPressed = true
@@ -121,9 +184,5 @@ class NavigationAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "NavigationAccessibilityService destroyed")
-    }
-
-    companion object {
-        private const val TAG = "NavAccessibility"
     }
 }

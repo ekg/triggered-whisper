@@ -184,6 +184,7 @@ class WhisperInputService : InputMethodService() {
                 if (voiceImeIds.contains(imeId) || imeId.contains("voice", ignoreCase = true)) {
                     Log.d("whisper-input", "Found voice IME: $imeId, switching...")
                     if (token != null) {
+                        NavigationAccessibilityService.shouldSwitchBackToOurIme = true
                         imm.setInputMethod(token, imeId)
                         whisperKeyboard.reset()
                         return
@@ -196,6 +197,7 @@ class WhisperInputService : InputMethodService() {
                     if (subtype.mode == "voice") {
                         Log.d("whisper-input", "Found voice subtype in IME: $imeId")
                         if (token != null) {
+                            NavigationAccessibilityService.shouldSwitchBackToOurIme = true
                             imm.setInputMethodAndSubtype(token, imeId, subtype)
                             whisperKeyboard.reset()
                             return
