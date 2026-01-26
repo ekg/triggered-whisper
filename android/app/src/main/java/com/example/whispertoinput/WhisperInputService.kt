@@ -297,7 +297,7 @@ class WhisperInputService : InputMethodService() {
             if (!isFirstTime) return@launch
             isFirstTime = false
             val isAutoStartRecording = dataStore.data.map { preferences: Preferences ->
-                preferences[AUTO_RECORDING_START] ?: true
+                preferences[AUTO_RECORDING_START] ?: false
             }.first()
             if (isAutoStartRecording) {
                 whisperKeyboard.tryStartRecording()
