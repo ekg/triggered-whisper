@@ -55,7 +55,6 @@ private const val MICROPHONE_PERMISSION_REQUEST_CODE = 200
 private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 201
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 val LANGUAGE_CODE = stringPreferencesKey("language-code")
-val AUTO_RECORDING_START = booleanPreferencesKey("is-auto-recording-start")
 val AUTO_SWITCH_BACK = booleanPreferencesKey("auto-switch-back")
 val FLOATING_KEYBOARD_LANDSCAPE = booleanPreferencesKey("floating-keyboard-landscape")
 val ENABLE_NAVIGATION_SERVICE = booleanPreferencesKey("enable-navigation-service")
@@ -236,10 +235,6 @@ class MainActivity : AppCompatActivity() {
         // Add setting items here to apply functions to them
         CoroutineScope(Dispatchers.Main).launch {
             val settingItems = arrayOf(
-                SettingDropdown(R.id.spinner_auto_recording_start, AUTO_RECORDING_START, hashMapOf(
-                    getString(R.string.settings_option_yes) to true,
-                    getString(R.string.settings_option_no) to false,
-                ), false),
                 SettingDropdown(R.id.spinner_auto_switch_back, AUTO_SWITCH_BACK, hashMapOf(
                     getString(R.string.settings_option_yes) to true,
                     getString(R.string.settings_option_no) to false,
