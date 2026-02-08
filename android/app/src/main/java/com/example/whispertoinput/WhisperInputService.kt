@@ -37,6 +37,8 @@ import com.example.whispertoinput.controller.ButtonKey
 import com.example.whispertoinput.keyboard.WhisperKeyboard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -44,6 +46,7 @@ import kotlinx.coroutines.launch
 private const val IME_SWITCH_OPTION_AVAILABILITY_API_LEVEL = 28
 
 class WhisperInputService : InputMethodService() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val whisperKeyboard: WhisperKeyboard = WhisperKeyboard()
     private var isFirstTime: Boolean = true
 
@@ -56,7 +59,7 @@ class WhisperInputService : InputMethodService() {
     private var isCurrentlyFloating: Boolean = false
 
     // Button bindings manager
-    private lateinit var bindingsManager: ButtonBindingsManager
+    private var bindingsManager: ButtonBindingsManager? = null
 
     companion object {
         private const val TAG = "WhisperInputService"
@@ -96,8 +99,8 @@ class WhisperInputService : InputMethodService() {
     override fun onCreateInputView(): View {
         // Initialize button bindings manager
         bindingsManager = ButtonBindingsManager(this)
-        CoroutineScope(Dispatchers.IO).launch {
-            bindingsManager.loadCache()
+        serviceScope.launch(Dispatchers.IO) {
+            bindingsManager?.loadCache()
             Log.d(TAG, "Button bindings cache loaded")
         }
 
@@ -138,7 +141,7 @@ class WhisperInputService : InputMethodService() {
         val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
 
         // Check floating mode setting to determine if we should apply size reduction
-        CoroutineScope(Dispatchers.Main).launch {
+        serviceScope.launch {
             val willUseFloating = isLandscape && dataStore.data.map { preferences: Preferences ->
                 preferences[FLOATING_KEYBOARD_LANDSCAPE] ?: false
             }.first()
@@ -328,7 +331,7 @@ class WhisperInputService : InputMethodService() {
 
         // If this is the first time calling onWindowShown, it means this IME is just being switched to.
         // Automatically starts recording after switching to Whisper Input. (if settings enabled)
-        CoroutineScope(Dispatchers.Main).launch {
+        serviceScope.launch {
             // Check if we should show floating window and update orientation accordingly
             val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             val willUseFloating = isLandscape && dataStore.data.map { preferences: Preferences ->
@@ -361,6 +364,7 @@ class WhisperInputService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
         super.onDestroy()
         activeInstance = null
         Log.d(TAG, "WhisperInputService destroyed")
@@ -389,8 +393,9 @@ class WhisperInputService : InputMethodService() {
         }
 
         // Look up action for this button (with or without R1 modifier)
+        val bindings = bindingsManager ?: return super.onKeyDown(keyCode, event)
         val buttonKey = ButtonKey(keyCode, isR1ModPressed)
-        val action = bindingsManager.getActionSync(buttonKey)
+        val action = bindings.getActionSync(buttonKey)
 
         Log.d("whisper-input", "Button ${buttonKey.displayName()} -> action $action")
 
@@ -407,7 +412,7 @@ class WhisperInputService : InputMethodService() {
      * Execute a button action from the bindings.
      */
     private fun executeAction(action: ActionType): Boolean {
-        val tmuxPrefix = bindingsManager.getTmuxPrefixSync()
+        val tmuxPrefix = bindingsManager?.getTmuxPrefixSync() ?: 'q'
 
         return when (action) {
             ActionType.VOICE_INPUT -> {
@@ -473,7 +478,7 @@ class WhisperInputService : InputMethodService() {
             ActionType.CTRL_Q, ActionType.CTRL_R, ActionType.CTRL_S, ActionType.CTRL_T,
             ActionType.CTRL_U, ActionType.CTRL_V, ActionType.CTRL_W, ActionType.CTRL_X,
             ActionType.CTRL_Y, ActionType.CTRL_Z -> {
-                val char = bindingsManager.getControlChar(action)
+                val char = bindingsManager?.getControlChar(action)
                 if (char != null) {
                     Log.d("whisper-input", "Executing control char: Ctrl+$char")
                     sendControlChar(char)
@@ -578,7 +583,7 @@ class WhisperInputService : InputMethodService() {
 
     private fun sendTmuxSequence(finalChar: Char) {
         // Use the configured tmux prefix
-        val prefix = bindingsManager.getTmuxPrefixSync()
+        val prefix = bindingsManager?.getTmuxPrefixSync() ?: 'q'
         sendTmuxSequenceWithPrefix(finalChar, prefix)
     }
 

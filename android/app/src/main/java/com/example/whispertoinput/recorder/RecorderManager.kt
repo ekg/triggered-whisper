@@ -113,7 +113,11 @@ class RecorderManager(context: Context) {
 
     fun stop() {
         recorder?.apply {
-            stop()
+            try {
+                stop()
+            } catch (e: IllegalStateException) {
+                Log.w("whisper-input", "MediaRecorder.stop() called in invalid state", e)
+            }
             release()
         }
         recorder = null

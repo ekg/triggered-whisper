@@ -345,38 +345,41 @@ class WhisperKeyboard {
     }
 
     private fun setKeyboardStatus(newStatus: KeyboardStatus) {
+        // Guard against being called before setup() or after views are destroyed
+        val row = keyboardRow ?: return
+
         when (newStatus) {
             KeyboardStatus.Idle -> {
-                labelStatus!!.setText(R.string.whisper_to_input)
-                buttonMic!!.setImageResource(R.drawable.mic_idle)
-                waitingIcon!!.visibility = View.INVISIBLE
-                buttonCancel!!.visibility = View.VISIBLE
-                buttonCancel!!.isEnabled = false  // Disable but keep visible to maintain layout
-                buttonRetry!!.visibility = if (shouldShowRetry()) View.VISIBLE else View.INVISIBLE
-                micRippleContainer!!.visibility = View.GONE
-                keyboardRow!!.keepScreenOn = false
+                labelStatus?.setText(R.string.whisper_to_input)
+                buttonMic?.setImageResource(R.drawable.mic_idle)
+                waitingIcon?.visibility = View.INVISIBLE
+                buttonCancel?.visibility = View.VISIBLE
+                buttonCancel?.isEnabled = false  // Disable but keep visible to maintain layout
+                buttonRetry?.visibility = if (shouldShowRetry()) View.VISIBLE else View.INVISIBLE
+                micRippleContainer?.visibility = View.GONE
+                row.keepScreenOn = false
             }
 
             KeyboardStatus.Recording -> {
-                labelStatus!!.setText(R.string.recording)
-                buttonMic!!.setImageResource(R.drawable.mic_pressed)
-                waitingIcon!!.visibility = View.INVISIBLE
-                buttonCancel!!.visibility = View.VISIBLE
-                buttonCancel!!.isEnabled = true
-                buttonRetry!!.visibility = View.INVISIBLE
-                micRippleContainer!!.visibility = View.VISIBLE
-                keyboardRow!!.keepScreenOn = true
+                labelStatus?.setText(R.string.recording)
+                buttonMic?.setImageResource(R.drawable.mic_pressed)
+                waitingIcon?.visibility = View.INVISIBLE
+                buttonCancel?.visibility = View.VISIBLE
+                buttonCancel?.isEnabled = true
+                buttonRetry?.visibility = View.INVISIBLE
+                micRippleContainer?.visibility = View.VISIBLE
+                row.keepScreenOn = true
             }
 
             KeyboardStatus.Transcribing -> {
-                labelStatus!!.setText(R.string.transcribing)
-                buttonMic!!.setImageResource(R.drawable.mic_transcribing)
-                waitingIcon!!.visibility = View.VISIBLE
-                buttonCancel!!.visibility = View.VISIBLE
-                buttonCancel!!.isEnabled = true
-                buttonRetry!!.visibility = View.INVISIBLE
-                micRippleContainer!!.visibility = View.GONE
-                keyboardRow!!.keepScreenOn = true
+                labelStatus?.setText(R.string.transcribing)
+                buttonMic?.setImageResource(R.drawable.mic_transcribing)
+                waitingIcon?.visibility = View.VISIBLE
+                buttonCancel?.visibility = View.VISIBLE
+                buttonCancel?.isEnabled = true
+                buttonRetry?.visibility = View.INVISIBLE
+                micRippleContainer?.visibility = View.GONE
+                row.keepScreenOn = true
             }
         }
 
