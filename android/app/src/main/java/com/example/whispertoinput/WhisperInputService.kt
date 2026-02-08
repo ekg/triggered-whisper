@@ -31,31 +31,23 @@ import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.datastore.preferences.core.Preferences
+import com.example.whispertoinput.controller.ActionType
+import com.example.whispertoinput.controller.ButtonBindingsManager
+import com.example.whispertoinput.controller.ButtonKey
 import com.example.whispertoinput.keyboard.WhisperKeyboard
-import com.example.whispertoinput.recorder.RecorderManager
-import com.github.liuyueyi.quick.transfer.ChineseUtils
-import com.github.liuyueyi.quick.transfer.constants.TransType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
 
-private const val RECORDED_AUDIO_FILENAME_M4A = "recorded.m4a"
-private const val RECORDED_AUDIO_FILENAME_OGG = "recorded.ogg"
-private const val AUDIO_MEDIA_TYPE_M4A = "audio/mp4"
-private const val AUDIO_MEDIA_TYPE_OGG = "audio/ogg"
 private const val IME_SWITCH_OPTION_AVAILABILITY_API_LEVEL = 28
 
 class WhisperInputService : InputMethodService() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val whisperKeyboard: WhisperKeyboard = WhisperKeyboard()
-    private val whisperTranscriber: WhisperTranscriber = WhisperTranscriber()
-    private var recorderManager: RecorderManager? = null
-    private var recordedAudioFilename: String = ""
-    private var audioMediaType: String = AUDIO_MEDIA_TYPE_M4A
-    private var useOggFormat: Boolean = false
     private var isFirstTime: Boolean = true
 
     // Track button states for modifier key detection
@@ -66,70 +58,50 @@ class WhisperInputService : InputMethodService() {
     private var useFloatingKeyboard: Boolean = false
     private var isCurrentlyFloating: Boolean = false
 
-    // Recording time tracking for WPM calculation
-    private var recordingStartTime: Long = 0
+    // Button bindings manager
+    private var bindingsManager: ButtonBindingsManager? = null
 
-    private fun transcriptionCallback(text: String?) {
-        if (!text.isNullOrEmpty()) {
-            currentInputConnection?.commitText(text, 1)
+    companion object {
+        private const val TAG = "WhisperInputService"
 
-            // Calculate WPM (words per minute)
-            val recordingDurationMs = System.currentTimeMillis() - recordingStartTime
-            val recordingDurationMin = recordingDurationMs / 60000.0
-            val wordCount = text.trim().split("\\s+".toRegex()).size
-            val wpm = if (recordingDurationMin > 0) {
-                (wordCount / recordingDurationMin).toInt()
-            } else {
-                0
+        // Static reference to the active instance for cross-service communication
+        @Volatile
+        private var activeInstance: WhisperInputService? = null
+
+        /**
+         * Commit text through the active WhisperInputService instance.
+         * Returns true if text was successfully committed.
+         * This is called from NavigationAccessibilityService.
+         */
+        fun commitTextFromExternal(text: String): Boolean {
+            val instance = activeInstance ?: run {
+                Log.d(TAG, "No active WhisperInputService instance")
+                return false
             }
 
-            // Display WPM and word count
-            whisperKeyboard.displayWPM(wpm, wordCount, recordingDurationMs)
-
-            // Check if auto-switch-back is enabled and switch if so
-            CoroutineScope(Dispatchers.Main).launch {
-                val autoSwitchBack = dataStore.data.map { preferences: Preferences ->
-                    preferences[AUTO_SWITCH_BACK] ?: false
-                }.first()
-                if (autoSwitchBack) {
-                    onSwitchIme()
-                }
+            val inputConnection = instance.currentInputConnection ?: run {
+                Log.d(TAG, "No active input connection")
+                return false
             }
+
+            Log.d(TAG, "Committing text from external: $text")
+            return inputConnection.commitText(text, 1)
         }
-        whisperKeyboard.reset()
-    }
 
-    private fun transcriptionExceptionCallback(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        whisperKeyboard.reset()
-    }
-
-    private suspend fun updateAudioFormat() {
-        val backend = dataStore.data.map { preferences: Preferences ->
-            preferences[SPEECH_TO_TEXT_BACKEND] ?: getString(R.string.settings_option_openai_api)
-        }.first()
-        
-        useOggFormat = backend == getString(R.string.settings_option_nvidia_nim)
-        if (useOggFormat) {
-            recordedAudioFilename = "${externalCacheDir?.absolutePath}/${RECORDED_AUDIO_FILENAME_OGG}"
-            audioMediaType = AUDIO_MEDIA_TYPE_OGG
-        } else {
-            recordedAudioFilename = "${externalCacheDir?.absolutePath}/${RECORDED_AUDIO_FILENAME_M4A}"
-            audioMediaType = AUDIO_MEDIA_TYPE_M4A
+        /**
+         * Check if WhisperInputService has an active input connection.
+         */
+        fun hasActiveInputConnection(): Boolean {
+            return activeInstance?.currentInputConnection != null
         }
     }
 
     override fun onCreateInputView(): View {
-        // Initialize members with regard to this context
-        recorderManager = RecorderManager(this)
-
-        // Preload conversion table
-        ChineseUtils.preLoad(true, TransType.SIMPLE_TO_TAIWAN)
-        ChineseUtils.preLoad(true, TransType.TAIWAN_TO_SIMPLE)
-
-        // Initialize audio format based on backend setting
-        CoroutineScope(Dispatchers.Main).launch {
-            updateAudioFormat()
+        // Initialize button bindings manager
+        bindingsManager = ButtonBindingsManager(this)
+        serviceScope.launch(Dispatchers.IO) {
+            bindingsManager?.loadCache()
+            Log.d(TAG, "Button bindings cache loaded")
         }
 
         // Should offer ime switch?
@@ -143,11 +115,6 @@ class WhisperInputService : InputMethodService() {
                 inputMethodManager.shouldOfferSwitchingToNextInputMethod(token)
             }
 
-        // Sets up recorder manager
-        recorderManager!!.setOnUpdateMicrophoneAmplitude { amplitude ->
-            onUpdateMicrophoneAmplitude(amplitude)
-        }
-
         // Returns the keyboard after setting it up and inflating its layout
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         return whisperKeyboard.setup(layoutInflater,
@@ -155,14 +122,14 @@ class WhisperInputService : InputMethodService() {
             isLandscape,
             { onStartRecording() },
             { onCancelRecording() },
-            { attachToEnd -> onStartTranscription(attachToEnd) },
-            { onCancelTranscription() },
+            { attachToEnd -> onStopRecording(attachToEnd) },
+            { onCancelRecording() },
             { onDeleteText() },
             { onEnter() },
             { onSpaceBar() },
             { onSwitchIme() },
             { onOpenSettings() },
-            { shouldShowRetry() },
+            { false },  // No retry for native recognition
             { char -> sendControlChar(char) },
             { keyCode -> sendSystemKey(keyCode) },
             { char -> sendTmuxSequence(char) },
@@ -174,7 +141,7 @@ class WhisperInputService : InputMethodService() {
         val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
 
         // Check floating mode setting to determine if we should apply size reduction
-        CoroutineScope(Dispatchers.Main).launch {
+        serviceScope.launch {
             val willUseFloating = isLandscape && dataStore.data.map { preferences: Preferences ->
                 preferences[FLOATING_KEYBOARD_LANDSCAPE] ?: false
             }.first()
@@ -243,43 +210,72 @@ class WhisperInputService : InputMethodService() {
         }
     }
 
-    private fun onStartRecording() {
-        // Upon starting recording, check whether audio permission is granted.
-        if (!recorderManager!!.allPermissionsGranted(this)) {
-            // If not, launch app MainActivity (for permission setup).
-            launchMainActivity()
-            whisperKeyboard.reset()
-            return
+    private fun launchVoiceInput() {
+        // Try to switch to Google Voice Typing IME
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        val token = window?.window?.attributes?.token
+
+        // Known Google Voice Typing IME IDs
+        val voiceImeIds = listOf(
+            "com.google.android.googlequicksearchbox/com.google.android.voicesearch.ime.VoiceInputMethodService",
+            "com.google.android.tts/com.google.android.apps.speech.tts.googletts.service.GoogleTTSInputMethodService"
+        )
+
+        try {
+            // Get list of enabled IMEs
+            val enabledImes = imm.enabledInputMethodList
+            Log.d("whisper-input", "Enabled IMEs: ${enabledImes.map { it.id }}")
+
+            // Look for a voice IME
+            for (ime in enabledImes) {
+                val imeId = ime.id
+                Log.d("whisper-input", "Checking IME: $imeId")
+
+                // Check if this is a voice IME
+                if (voiceImeIds.contains(imeId) || imeId.contains("voice", ignoreCase = true)) {
+                    Log.d("whisper-input", "Found voice IME: $imeId, switching...")
+                    if (token != null) {
+                        NavigationAccessibilityService.shouldSwitchBackToOurIme = true
+                        imm.setInputMethod(token, imeId)
+                        whisperKeyboard.reset()
+                        return
+                    }
+                }
+
+                // Also check subtypes for voice mode
+                val subtypes = imm.getEnabledInputMethodSubtypeList(ime, true)
+                for (subtype in subtypes) {
+                    if (subtype.mode == "voice") {
+                        Log.d("whisper-input", "Found voice subtype in IME: $imeId")
+                        if (token != null) {
+                            NavigationAccessibilityService.shouldSwitchBackToOurIme = true
+                            imm.setInputMethodAndSubtype(token, imeId, subtype)
+                            whisperKeyboard.reset()
+                            return
+                        }
+                    }
+                }
+            }
+
+            // If no voice IME found, show message
+            Toast.makeText(this, "No voice input IME found. Enable Google Voice Typing in Settings.", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Log.e("whisper-input", "Failed to switch to voice IME", e)
+            Toast.makeText(this, "Could not start voice input: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-
-        // Track recording start time for WPM calculation
-        recordingStartTime = System.currentTimeMillis()
-
-        recorderManager!!.start(this, recordedAudioFilename, useOggFormat)
+        whisperKeyboard.reset()
     }
 
-    // when mic amplitude is updated, notify the keyboard
-    // this callback is registered to the recorder manager
-    private fun onUpdateMicrophoneAmplitude(amplitude: Int) {
-        whisperKeyboard.updateMicrophoneAmplitude(amplitude)
+    private fun onStartRecording() {
+        launchVoiceInput()
     }
 
     private fun onCancelRecording() {
-        recorderManager!!.stop()
+        whisperKeyboard.reset()
     }
 
-    private fun onStartTranscription(attachToEnd: String) {
-        recorderManager!!.stop()
-        whisperTranscriber.startAsync(this,
-            recordedAudioFilename,
-            audioMediaType,
-            attachToEnd,
-            { transcriptionCallback(it) },
-            { transcriptionExceptionCallback(it) })
-    }
-
-    private fun onCancelTranscription() {
-        whisperTranscriber.stop()
+    private fun onStopRecording(attachToEnd: String) {
+        whisperKeyboard.reset()
     }
 
     private fun onDeleteText() {
@@ -320,11 +316,6 @@ class WhisperInputService : InputMethodService() {
         inputConnection.commitText(" ", 1)
     }
 
-    private fun shouldShowRetry(): Boolean {
-        val exists = File(recordedAudioFilename).exists()
-        return exists
-    }
-
     // Opens up app MainActivity
     private fun launchMainActivity() {
         val dialogIntent = Intent(this, MainActivity::class.java)
@@ -334,17 +325,13 @@ class WhisperInputService : InputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
-        whisperTranscriber.stop()
+        activeInstance = this
+        Log.d(TAG, "WhisperInputService window shown, activeInstance set")
         whisperKeyboard.reset()
-        recorderManager!!.stop()
 
         // If this is the first time calling onWindowShown, it means this IME is just being switched to.
         // Automatically starts recording after switching to Whisper Input. (if settings enabled)
-        // Dispatch a coroutine to do this task.
-        CoroutineScope(Dispatchers.Main).launch {
-            // Update audio format based on current backend setting
-            updateAudioFormat()
-
+        serviceScope.launch {
             // Check if we should show floating window and update orientation accordingly
             val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             val willUseFloating = isLandscape && dataStore.data.map { preferences: Preferences ->
@@ -362,32 +349,26 @@ class WhisperInputService : InputMethodService() {
             }.first()
             whisperKeyboard.setHotkeyBarVisibility(showHotkeyBar)
 
-            if (!isFirstTime) return@launch
             isFirstTime = false
-            val isAutoStartRecording = dataStore.data.map { preferences: Preferences ->
-                preferences[AUTO_RECORDING_START] ?: true
-            }.first()
-            if (isAutoStartRecording) {
-                whisperKeyboard.tryStartRecording()
-            }
         }
     }
 
     override fun onWindowHidden() {
         super.onWindowHidden()
-        whisperTranscriber.stop()
+        activeInstance = null
+        Log.d(TAG, "WhisperInputService window hidden, activeInstance cleared")
         whisperKeyboard.reset()
-        recorderManager!!.stop()
         floatingWindow?.hide()
         whisperKeyboard.unlockDimensions()
         isCurrentlyFloating = false
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
         super.onDestroy()
-        whisperTranscriber.stop()
+        activeInstance = null
+        Log.d(TAG, "WhisperInputService destroyed")
         whisperKeyboard.reset()
-        recorderManager!!.stop()
         floatingWindow?.hide()
         whisperKeyboard.unlockDimensions()
         floatingWindow = null
@@ -403,124 +384,179 @@ class WhisperInputService : InputMethodService() {
         // Display ALL key events in debug panel
         whisperKeyboard.displayKeyEvent(keyCode, keyName)
 
-        // Map controller buttons with new modifier scheme
-        when (keyCode) {
-            KeyEvent.KEYCODE_BUTTON_L1 -> {
-                if (isR1ModPressed) {
-                    // R1+L1: New tmux pane (horizontal split - Ctrl+Q ")
-                    Log.d("whisper-input", "R1+L1 pressed, creating new tmux pane")
-                    whisperKeyboard.displayKeyEvent(keyCode, "➕ NEW PANE")
-                    sendTmuxSequence('"')
-                } else {
-                    // L1 alone: Toggle recording (listen)
-                    Log.d("whisper-input", "L1 pressed, toggling recording")
-                    whisperKeyboard.toggleRecording()
-                }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_R1 -> {
-                // R1: Modifier key
-                isR1ModPressed = true
-                Log.d("whisper-input", "R1 mod key pressed")
-                whisperKeyboard.displayKeyEvent(keyCode, "🔧 MOD")
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_A -> {
-                if (isR1ModPressed) {
-                    // R1+A: Send just Ctrl+Q (tmux command mode, then user can press arrows)
-                    Log.d("whisper-input", "R1+A pressed, sending Ctrl+Q")
-                    whisperKeyboard.displayKeyEvent(keyCode, "⌨️ CTRL+Q")
-                    sendControlChar('q')
-                } else {
-                    // A alone: Ctrl+R (fzf autocomplete)
-                    Log.d("whisper-input", "A pressed, sending Ctrl+R")
-                    whisperKeyboard.displayKeyEvent(keyCode, "🔍 FZF")
-                    sendControlChar('r')
-                }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_X -> {
-                if (isR1ModPressed) {
-                    // R1+X: Send Ctrl+C (cancel/interrupt)
-                    Log.d("whisper-input", "R1+X pressed, sending Ctrl+C")
-                    whisperKeyboard.displayKeyEvent(keyCode, "❌ CTRL+C")
-                    sendControlChar('c')
-                } else {
-                    // X alone: Delete
-                    Log.d("whisper-input", "X pressed, delete")
-                    onDeleteText()
-                }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_Y -> {
-                if (isR1ModPressed) {
-                    // R1+Y: Send Ctrl+D (exit/logout)
-                    Log.d("whisper-input", "R1+Y pressed, sending Ctrl+D")
-                    whisperKeyboard.displayKeyEvent(keyCode, "🚪 CTRL+D")
-                    sendControlChar('d')
-                } else {
-                    // Y alone: Space
-                    Log.d("whisper-input", "Y pressed, space")
-                    onSpaceBar()
-                }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_B -> {
-                // Button B: Trigger enter (stop recording with newline, or send enter)
-                Log.d("whisper-input", "Button B pressed, triggering enter")
-                whisperKeyboard.triggerEnter()
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_L2 -> {
-                if (isR1ModPressed) {
-                    // R1+L2: Send Ctrl+Q C (tmux new window)
-                    Log.d("whisper-input", "R1+L2 pressed, creating new tmux window")
-                    whisperKeyboard.displayKeyEvent(keyCode, "🪟 NEW WIN")
-                    sendTmuxSequence('c')
-                } else {
-                    // L2: Send Ctrl+Q P (tmux previous window)
-                    Log.d("whisper-input", "L2 pressed, sending Ctrl+Q P")
-                    whisperKeyboard.displayKeyEvent(keyCode, "◀️ PREV")
-                    sendTmuxSequence('p')
-                }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_R2 -> {
-                // R2: Send Ctrl+Q N (tmux next window)
-                Log.d("whisper-input", "R2 pressed, sending Ctrl+Q N")
-                whisperKeyboard.displayKeyEvent(keyCode, "▶️ NEXT")
-                sendTmuxSequence('n')
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_UP -> {
-                if (isR1ModPressed) {
-                    // R1+Up: Home button
-                    Log.d("whisper-input", "R1+Up pressed, sending Home")
-                    whisperKeyboard.displayKeyEvent(keyCode, "🏠 HOME")
-                    sendSystemKey(KeyEvent.KEYCODE_HOME)
-                    return true
-                }
-            }
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
-                if (isR1ModPressed) {
-                    // R1+Down: Recent apps / Task switcher
-                    Log.d("whisper-input", "R1+Down pressed, sending Recent Apps")
-                    whisperKeyboard.displayKeyEvent(keyCode, "📱 RECENT")
-                    sendSystemKey(KeyEvent.KEYCODE_APP_SWITCH)
-                    return true
-                }
-            }
-            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (isR1ModPressed) {
-                    // R1+Left: Back button
-                    Log.d("whisper-input", "R1+Left pressed, sending Back")
-                    whisperKeyboard.displayKeyEvent(keyCode, "⬅️ BACK")
-                    sendSystemKey(KeyEvent.KEYCODE_BACK)
-                    return true
-                }
-            }
+        // R1 is always the modifier key
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_R1) {
+            isR1ModPressed = true
+            Log.d("whisper-input", "R1 mod key pressed")
+            whisperKeyboard.displayKeyEvent(keyCode, "MOD")
+            return true
         }
-        return super.onKeyDown(keyCode, event)
+
+        // Look up action for this button (with or without R1 modifier)
+        val bindings = bindingsManager ?: return super.onKeyDown(keyCode, event)
+        val buttonKey = ButtonKey(keyCode, isR1ModPressed)
+        val action = bindings.getActionSync(buttonKey)
+
+        Log.d("whisper-input", "Button ${buttonKey.displayName()} -> action $action")
+
+        // If no action configured, pass through to default handler
+        if (action == ActionType.NONE) {
+            return super.onKeyDown(keyCode, event)
+        }
+
+        // Execute the action
+        return executeAction(action)
+    }
+
+    /**
+     * Execute a button action from the bindings.
+     */
+    private fun executeAction(action: ActionType): Boolean {
+        val tmuxPrefix = bindingsManager?.getTmuxPrefixSync() ?: 'q'
+
+        return when (action) {
+            ActionType.VOICE_INPUT -> {
+                Log.d("whisper-input", "Executing VOICE_INPUT")
+                whisperKeyboard.toggleRecording()
+                true
+            }
+
+            // Basic keys
+            ActionType.KEY_ENTER -> {
+                Log.d("whisper-input", "Executing KEY_ENTER")
+                whisperKeyboard.triggerEnter()
+                true
+            }
+            ActionType.KEY_SPACE -> {
+                Log.d("whisper-input", "Executing KEY_SPACE")
+                onSpaceBar()
+                true
+            }
+            ActionType.KEY_DELETE -> {
+                Log.d("whisper-input", "Executing KEY_DELETE")
+                onDeleteText()
+                true
+            }
+            ActionType.KEY_TAB -> {
+                Log.d("whisper-input", "Executing KEY_TAB")
+                currentInputConnection?.commitText("\t", 1)
+                true
+            }
+            ActionType.KEY_ESCAPE -> {
+                Log.d("whisper-input", "Executing KEY_ESCAPE")
+                currentInputConnection?.commitText("\u001b", 1)  // ESC character
+                true
+            }
+
+            // Arrow keys
+            ActionType.KEY_UP -> {
+                Log.d("whisper-input", "Executing KEY_UP")
+                sendArrowKey(KeyEvent.KEYCODE_DPAD_UP)
+                true
+            }
+            ActionType.KEY_DOWN -> {
+                Log.d("whisper-input", "Executing KEY_DOWN")
+                sendArrowKey(KeyEvent.KEYCODE_DPAD_DOWN)
+                true
+            }
+            ActionType.KEY_LEFT -> {
+                Log.d("whisper-input", "Executing KEY_LEFT")
+                sendArrowKey(KeyEvent.KEYCODE_DPAD_LEFT)
+                true
+            }
+            ActionType.KEY_RIGHT -> {
+                Log.d("whisper-input", "Executing KEY_RIGHT")
+                sendArrowKey(KeyEvent.KEYCODE_DPAD_RIGHT)
+                true
+            }
+
+            // Control characters
+            ActionType.CTRL_A, ActionType.CTRL_B, ActionType.CTRL_C, ActionType.CTRL_D,
+            ActionType.CTRL_E, ActionType.CTRL_F, ActionType.CTRL_G, ActionType.CTRL_H,
+            ActionType.CTRL_I, ActionType.CTRL_J, ActionType.CTRL_K, ActionType.CTRL_L,
+            ActionType.CTRL_M, ActionType.CTRL_N, ActionType.CTRL_O, ActionType.CTRL_P,
+            ActionType.CTRL_Q, ActionType.CTRL_R, ActionType.CTRL_S, ActionType.CTRL_T,
+            ActionType.CTRL_U, ActionType.CTRL_V, ActionType.CTRL_W, ActionType.CTRL_X,
+            ActionType.CTRL_Y, ActionType.CTRL_Z -> {
+                val char = bindingsManager?.getControlChar(action)
+                if (char != null) {
+                    Log.d("whisper-input", "Executing control char: Ctrl+$char")
+                    sendControlChar(char)
+                }
+                true
+            }
+
+            // Tmux commands
+            ActionType.TMUX_NEW_PANE_H -> {
+                Log.d("whisper-input", "Executing TMUX_NEW_PANE_H")
+                sendTmuxSequenceWithPrefix('"', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_NEW_PANE_V -> {
+                Log.d("whisper-input", "Executing TMUX_NEW_PANE_V")
+                sendTmuxSequenceWithPrefix('%', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_NEW_WINDOW -> {
+                Log.d("whisper-input", "Executing TMUX_NEW_WINDOW")
+                sendTmuxSequenceWithPrefix('c', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_NEXT_WINDOW -> {
+                Log.d("whisper-input", "Executing TMUX_NEXT_WINDOW")
+                sendTmuxSequenceWithPrefix('n', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_PREV_WINDOW -> {
+                Log.d("whisper-input", "Executing TMUX_PREV_WINDOW")
+                sendTmuxSequenceWithPrefix('p', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_NEXT_PANE -> {
+                Log.d("whisper-input", "Executing TMUX_NEXT_PANE")
+                sendTmuxSequenceWithPrefix('o', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_PREV_PANE -> {
+                Log.d("whisper-input", "Executing TMUX_PREV_PANE")
+                sendTmuxSequenceWithPrefix(';', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_COMMAND -> {
+                Log.d("whisper-input", "Executing TMUX_COMMAND")
+                sendTmuxSequenceWithPrefix(':', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_DETACH -> {
+                Log.d("whisper-input", "Executing TMUX_DETACH")
+                sendTmuxSequenceWithPrefix('d', tmuxPrefix)
+                true
+            }
+            ActionType.TMUX_COPY_MODE -> {
+                Log.d("whisper-input", "Executing TMUX_COPY_MODE")
+                sendTmuxSequenceWithPrefix('[', tmuxPrefix)
+                true
+            }
+
+            // System actions - let accessibility service handle these
+            ActionType.SYSTEM_HOME -> {
+                Log.d("whisper-input", "Executing SYSTEM_HOME")
+                sendSystemKey(KeyEvent.KEYCODE_HOME)
+                true
+            }
+            ActionType.SYSTEM_BACK -> {
+                Log.d("whisper-input", "Executing SYSTEM_BACK")
+                sendSystemKey(KeyEvent.KEYCODE_BACK)
+                true
+            }
+            ActionType.SYSTEM_RECENTS -> {
+                Log.d("whisper-input", "Executing SYSTEM_RECENTS")
+                sendSystemKey(KeyEvent.KEYCODE_APP_SWITCH)
+                true
+            }
+
+            ActionType.NONE -> false
+        }
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
@@ -546,18 +582,31 @@ class WhisperInputService : InputMethodService() {
     }
 
     private fun sendTmuxSequence(finalChar: Char) {
+        // Use the configured tmux prefix
+        val prefix = bindingsManager?.getTmuxPrefixSync() ?: 'q'
+        sendTmuxSequenceWithPrefix(finalChar, prefix)
+    }
+
+    private fun sendTmuxSequenceWithPrefix(finalChar: Char, prefix: Char) {
         val inputConnection = currentInputConnection ?: return
 
-        // Send Ctrl+Q as actual control character (ASCII 17), then the command letter
-        // Ctrl+Q = 0x11 (17 in decimal)
-        val ctrlQ = "\u0011"  // Ctrl+Q control character
+        // Send the prefix as a control character (Ctrl+prefix)
+        // Control characters are ASCII values 1-26 for Ctrl+A through Ctrl+Z
+        val controlCode = (prefix.uppercaseChar() - 'A' + 1).toChar()
 
-        // Send Ctrl+Q followed by the letter (p=previous, n=next, c=create, ")
-        inputConnection.commitText(ctrlQ + finalChar, 1)
+        // Send prefix control character followed by the command letter
+        inputConnection.commitText(controlCode.toString() + finalChar, 1)
     }
 
     private fun sendSystemKey(keyCode: Int) {
         // Send system key events (Home, Back, Recent apps, etc.)
+        val inputConnection = currentInputConnection ?: return
+        inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+    }
+
+    private fun sendArrowKey(keyCode: Int) {
+        // Send arrow key events for cursor navigation
         val inputConnection = currentInputConnection ?: return
         inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
         inputConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))

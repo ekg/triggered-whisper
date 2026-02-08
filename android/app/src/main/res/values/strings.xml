@@ -40,7 +40,9 @@
     <string name="settings_option_nvidia_nim_default_endpoint">http://localhost:9000/v1/audio/transcriptions</string>
     <string name="settings_option_nvidia_nim_default_model"></string> <!-- Empty default model -->
     <string name="settings_option_nvidia_nim_default_language">multi</string> <!-- Empty default language -->
+    <string name="settings_option_gboard_voice">Gboard Voice Typing</string>
     <string-array name="settings_speech_to_text_backend_array">
+        <item>@string/settings_option_gboard_voice</item>
         <item>@string/settings_option_openai_api</item>
         <item>@string/settings_option_whisper_asr_webservice</item>
         <item>@string/settings_option_nvidia_nim</item>
@@ -109,5 +111,13 @@
         <item>@string/settings_option_yes</item>
         <item>@string/settings_option_no</item>
     </string-array>
+
+    <!-- Button Bindings -->
+    <string name="button_bindings_title">Controller Button Bindings</string>
+    <string name="button_bindings_desc">Tap a button to change its action.</string>
+    <string name="configure_button_bindings">Configure Button Bindings</string>
+    <string name="configure_button_bindings_desc">Customize what each controller button does.</string>
+    <string name="tmux_prefix_label">Tmux Prefix Key</string>
+    <string name="reset_bindings">Reset to Defaults</string>
 
 </resources>

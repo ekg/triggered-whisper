@@ -96,14 +96,14 @@ class WhisperTranscriber {
             }
 
             var rawText = response.body!!.string().trim()
-            
+
             // For NVIDIA NIM, remove quotes if they wrap the text
             // Not sure if this is a bug or a feature...
-            if (speechToTextBackend == context.getString(R.string.settings_option_nvidia_nim) && 
+            if (speechToTextBackend == context.getString(R.string.settings_option_nvidia_nim) &&
                 rawText.startsWith("\"") && rawText.endsWith("\"")) {
                 rawText = rawText.substring(1, rawText.length - 1).trim()
             }
-            
+
             val processedText = when (postprocessing) {
                 context.getString(R.string.settings_option_to_simplified) -> ChineseUtils.tw2s(rawText)
                 context.getString(R.string.settings_option_to_traditional) -> ChineseUtils.s2tw(rawText)
@@ -181,29 +181,15 @@ class WhisperTranscriber {
         // NVIDIA NIM:
         // - No public documentation for HTTP-style requests.
         // - Source code at `/opt/nim/inference.py` in docker container `nvcr.io/nim/nvidia/riva-asr:1.3.0`.
-        /*
-            ...
-            @HttpNIMApiInterface.route('/v1/audio/transcriptions', methods=["post"])
-            async def transcriptions(
-                self,
-                file: UploadFile = File(...),
-                model: Optional[str] = Form(None),
-                language: Optional[str] = Form(None),
-                prompt: Optional[str] = Form(None),
-                response_format: Optional[str] = Form(None),
-                temperature: Optional[float] = Form(None),
-            ):
-            ...
-         */
         val file: File = File(filename)
         val fileBody: RequestBody = file.asRequestBody(mediaType.toMediaTypeOrNull())
         val requestBody: RequestBody = MultipartBody.Builder().apply {
             setType(MultipartBody.FORM)
             // Determine filename based on media type
             val formDataFilename = if (mediaType == "audio/ogg") "@audio.ogg" else "@audio.m4a"
-            
+
             // Add file to payload
-            if (speechToTextBackend == context.getString(R.string.settings_option_openai_api) || 
+            if (speechToTextBackend == context.getString(R.string.settings_option_openai_api) ||
                 speechToTextBackend == context.getString(R.string.settings_option_nvidia_nim)) {
                 addFormDataPart("file", formDataFilename, fileBody)
             } else if (speechToTextBackend == context.getString(R.string.settings_option_whisper_asr_webservice)) {
